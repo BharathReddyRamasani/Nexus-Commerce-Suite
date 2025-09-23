@@ -1,5 +1,6 @@
 
 🚀Nexus Commerce Suite
+
 An intelligent, command-line-driven business management engine for Small and Medium-sized Businesses (SMBs) in India.
 
 The Nexus Commerce Suite is a backend-focused application designed to replace the operational chaos of manual ledgers and spreadsheets with a centralized, data-driven system. It empowers business owners to manage inventory, sales, and customers with efficiency and precision, providing actionable insights directly through a fast and intuitive Command-Line Interface (CLI).
