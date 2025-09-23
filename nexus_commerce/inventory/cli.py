@@ -40,7 +40,6 @@ def list_products_flow():
         ]
         click.echo(tabulate(table_data, headers=headers, tablefmt="grid"))
     else:
-        # This handles the case where the logic function returns an error string
         click.secho(products, fg="red")
 
 def find_product_flow():
@@ -61,7 +60,6 @@ def find_product_flow():
     elif product is None:
         click.secho(f"No product found with SKU '{sku.upper()}'.", fg="yellow")
     else:
-        # This handles the case where the logic function returns an error string
         click.secho(product, fg="red")
 
 def update_product_flow():
@@ -75,7 +73,7 @@ def update_product_flow():
         if product is None:
             click.secho(f"Error: No product found with SKU '{sku_to_update.upper()}'.", fg="red")
         else:
-            click.secho(product, fg="red") # Display finding error
+            click.secho(product, fg="red") 
         return
 
     click.echo("\nProduct found. Enter new details below (press Enter to keep current value).")

@@ -28,7 +28,7 @@ def list_customers_flow():
         table_data = [[c['name'], c['phone'], c.get('email', 'N/A')] for c in customers]
         click.echo(tabulate(table_data, headers=headers, tablefmt="grid"))
     else:
-        click.secho(customers, fg="red") # Display error
+        click.secho(customers, fg="red") 
 
 def find_customer_history_flow():
     """Flow for finding a customer and displaying their purchase history."""
@@ -36,7 +36,7 @@ def find_customer_history_flow():
     phone = click.prompt("Enter the phone number of the customer to find")
     customer = logic.find_customer_by_phone(phone)
     
-    if isinstance(customer, str): # Error message returned
+    if isinstance(customer, str): 
         click.secho(customer, fg="red")
         return
     if customer is None:
@@ -58,9 +58,7 @@ def find_customer_history_flow():
         
         headers = ["Product Name", "SKU", "Quantity", "Price"]
         table_data = []
-        
-        # --- THIS IS THE FIX ---
-        # Changed 'sale_items' to the correct key, 'items'.
+ 
         for item in sale['items']:
             product_name = item.get('products', {}).get('name', 'N/A')
             product_sku = item.get('products', {}).get('sku', 'N/A')

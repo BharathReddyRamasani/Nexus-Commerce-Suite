@@ -1,14 +1,11 @@
 import os
 import click
-
-# Import all the interactive user flows from their respective modules.
-# This keeps the main file clean and organized.
 from nexus_commerce.inventory.cli import (
     add_product_flow,
     list_products_flow,
     find_product_flow,
     update_product_flow,
-    adjust_stock_flow  # The newly added flow for stock adjustments
+    adjust_stock_flow
 )
 from nexus_commerce.customers.cli import (
     add_customer_flow,
@@ -19,12 +16,12 @@ from nexus_commerce.sales.cli import record_sale_flow
 from nexus_commerce.reports.cli import (
     profit_report_flow,
     product_health_report_flow,
-    payment_summary_flow
+    payment_summary_flow,
+    sale_simulator_flow  #
 )
 
 def clear_screen():
     """Clears the terminal screen for a cleaner user interface."""
-    # 'cls' is the command for Windows, 'clear' is for macOS/Linux.
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def print_header(title):
@@ -42,7 +39,7 @@ def product_menu():
         click.echo("2. List All Products")
         click.echo("3. Find Product by SKU")
         click.echo("4. Update Product Details (Name/Price)")
-        click.echo("5. Adjust Stock Quantity (Manual Correction)") # New, separate option
+        click.echo("5. Adjust Stock Quantity (Manual Correction)")
         click.echo("0. Back to Main Menu")
         choice = click.prompt("Select an option", type=str)
 
@@ -102,6 +99,7 @@ def reports_menu():
         click.echo("1. Profit & Revenue Report")
         click.echo("2. Product Health Status Report")
         click.echo("3. Payment Methods Summary")
+        click.echo("4. Simulate a Sale (Strategic Tool)")
         click.echo("0. Back to Main Menu")
         choice = click.prompt("Select an option", type=str)
 
@@ -111,6 +109,8 @@ def reports_menu():
             product_health_report_flow()
         elif choice == '3':
             payment_summary_flow()
+        elif choice == '4':
+            sale_simulator_flow()
         elif choice == '0':
             break
         else:
@@ -146,20 +146,16 @@ def main_menu():
             click.pause()
 
 if __name__ == "__main__":
-    # This block runs when the script is executed directly.
     try:
-        # Before starting, this robust check initializes the Supabase client.
-        # It immediately verifies that the .env file is present and credentials are valid.
         from nexus_commerce.common.supabase_client import initialize_supabase_client
         try:
             initialize_supabase_client()
         except (ValueError, ConnectionError) as e:
             click.secho("FATAL ERROR: Could not initialize Supabase connection.", fg="red", bold=True)
             click.secho(str(e), fg="red")
-            exit(1) # Exit the program if the client can't be initialized.
+            exit(1) 
 
         main_menu()
     except (KeyboardInterrupt, EOFError):
-        # Gracefully handle the user quitting the app with Ctrl+C.
         click.secho("\nApplication terminated by user. Goodbye!", fg="yellow")
 

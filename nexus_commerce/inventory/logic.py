@@ -1,6 +1,4 @@
 from ..common.supabase_client import get_supabase_client
-
-# --- Existing functions (add_product, get_all_products, find_product_by_sku, update_product_by_sku) remain the same ---
 def add_product(name, sku, cost_price, selling_price, quantity_on_hand):
     """Adds a new product to the database."""
     supabase = get_supabase_client()
@@ -52,15 +50,12 @@ def update_product_by_sku(sku, updates):
     except Exception as e:
         return f"Error: Could not update product. Details: {e}"
 
-# --- NEW FUNCTION ADDED BELOW ---
-
 def adjust_stock_quantity(sku, change_quantity, reason):
     """
     Adjusts the stock for a product and creates an audit trail record.
     """
     supabase = get_supabase_client()
     try:
-        # Step 1: Find the product first
         product_res = supabase.table("products").select("id, quantity_on_hand").eq("sku", sku.upper()).single().execute()
         if not product_res.data:
             return f"Error: Product with SKU '{sku.upper()}' not found."
@@ -72,7 +67,6 @@ def adjust_stock_quantity(sku, change_quantity, reason):
         if new_quantity < 0:
             return f"Error: Adjustment would result in negative stock ({new_quantity})."
 
-        # Step 2: Create the audit trail record in stock_adjustments
         adjustment_data = {
             "product_id": product['id'],
             "change_quantity": change_quantity,
@@ -80,7 +74,6 @@ def adjust_stock_quantity(sku, change_quantity, reason):
         }
         supabase.table("stock_adjustments").insert(adjustment_data).execute()
 
-        # Step 3: Update the actual quantity in the products table
         supabase.table("products").update({"quantity_on_hand": new_quantity}).eq("sku", sku.upper()).execute()
 
         return f"Success: Stock for SKU '{sku.upper()}' adjusted to {new_quantity}."

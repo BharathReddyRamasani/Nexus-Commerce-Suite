@@ -43,18 +43,14 @@ def record_sale_flow():
     if not customer_phone.strip():
         customer_phone = None
 
-    # This is the corrected logic. It receives a single dictionary named 'response'.
     response = logic.record_sale(sale_items_info, payments_info, customer_phone)
     
-    # It then checks the 'success' key inside the dictionary to determine the outcome.
     if response['success']:
         click.secho(response['message'], fg="green", bold=True)
-        # It also checks for and displays any low-stock alerts.
         if response['alerts']:
             click.secho("\n--- CRITICAL ALERTS ---", fg="yellow", bold=True)
             for alert in response['alerts']:
                 click.secho(alert, fg="yellow")
     else:
-        # If not successful, it simply prints the error message from the dictionary.
         click.secho(response['message'], fg="red")
 

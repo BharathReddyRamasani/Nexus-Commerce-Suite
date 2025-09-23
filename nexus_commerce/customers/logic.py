@@ -6,23 +6,17 @@ def add_customer(name, phone, email):
     try:
         customer_data = {"name": name, "phone": phone, "email": email}
         
-        # --- ROBUST FIX: We check the response object directly ---
         response = supabase.table("customers").insert(customer_data).execute()
         
-        # The supabase-py v2 library includes an 'error' attribute on the response if something fails
         if hasattr(response, 'error') and response.error:
-            # We raise an exception with the precise message from Supabase
             raise Exception(response.error.message)
             
         return f"Success: Customer '{name}' added."
 
     except Exception as e:
-        # --- DIAGNOSTIC: This will print the TRUE error to the console ---
         print("\n--- RAW DATABASE ERROR ---")
         print(repr(e))
         print("--------------------------\n")
-
-        # Now we provide a more intelligent error message
         if 'unique constraint' in str(e).lower() and 'phone' in str(e).lower():
             return f"Error: A customer with phone '{phone}' already exists."
         elif 'unique constraint' in str(e).lower() and 'email' in str(e).lower():

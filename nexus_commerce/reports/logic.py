@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta
 from ..common.supabase_client import get_supabase_client
+from ..inventory.logic import find_product_by_sku
 
 def get_profit_report(period):
-    """Generates a profit and revenue report for a given period."""
     supabase = get_supabase_client()
-    
     end_date = datetime.now()
     if period == 'daily':
         start_date = end_date - timedelta(days=1)
@@ -14,29 +13,22 @@ def get_profit_report(period):
         start_date = end_date - timedelta(days=30)
     else:
         return {"error": "Invalid period specified."}
-
     try:
         response = supabase.table("sales").select("total_amount, total_profit").gte("sale_date", start_date.isoformat()).lte("sale_date", end_date.isoformat()).execute()
-        
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
-
         total_revenue = sum(sale['total_amount'] for sale in response.data)
         total_profit = sum(sale['total_profit'] for sale in response.data)
-        
         return {"total_revenue": total_revenue, "total_profit": total_profit, "start_date": start_date, "end_date": end_date}
     except Exception as e:
         return {"error": f"Could not generate report. Details: {e}"}
 
 def get_product_health_report():
-    """Generates a report on the health status of all products."""
     supabase = get_supabase_client()
     try:
         response = supabase.table("products").select("sku, name, quantity_on_hand, last_sale_date").execute()
-        
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
-
         report_data = []
         now = datetime.now()
         for product in response.data:
@@ -48,22 +40,18 @@ def get_product_health_report():
                     status = "Hot"
                 elif days_since_sale <= 90:
                     status = "Cooling"
-            
             report_data.append({
                 "sku": product['sku'],
                 "name": product['name'],
                 "quantity": product['quantity_on_hand'],
                 "status": status
             })
-        
         return {"data": sorted(report_data, key=lambda x: x['name'])}
     except Exception as e:
         return {"error": f"Could not generate report. Details: {e}"}
 
 def get_payment_summary(period):
-    """Generates a summary of payments by method for a given period."""
     supabase = get_supabase_client()
-    
     end_date = datetime.now()
     if period == 'daily':
         start_date = end_date - timedelta(days=1)
@@ -73,24 +61,47 @@ def get_payment_summary(period):
         start_date = end_date - timedelta(days=30)
     else:
         return {"error": "Invalid period specified."}
-
     try:
         sales_response = supabase.table("sales").select("id").gte("sale_date", start_date.isoformat()).lte("sale_date", end_date.isoformat()).execute()
-        
         if not sales_response.data:
             return {"summary": {}, "start_date": start_date, "end_date": end_date}
-            
         sale_ids = [sale['id'] for sale in sales_response.data]
-        
         payments_response = supabase.table("payments").select("payment_method, amount").in_("sale_id", sale_ids).execute()
-        
         summary = {}
         for payment in payments_response.data:
             method = payment['payment_method']
             amount = payment['amount']
             summary[method] = summary.get(method, 0) + amount
-            
         return {"summary": summary, "start_date": start_date, "end_date": end_date}
     except Exception as e:
         return {"error": f"Could not generate report. Details: {e}"}
+
+
+def simulate_sale(discount_percentage, skus):
+    """
+    Simulates the financial impact of a discount on a list of products.
+    """
+    simulation_results = []
+    for sku in skus:
+        product = find_product_by_sku(sku)
+        if not isinstance(product, dict):
+            simulation_results.append({"sku": sku, "error": f"Product with SKU '{sku}' not found."})
+            continue
+
+        original_price = product['selling_price']
+        cost_price = product['cost_price']
+        original_profit = original_price - cost_price
+
+        discounted_price = original_price * (1 - discount_percentage / 100)
+        new_profit = discounted_price - cost_price
+
+        simulation_results.append({
+            "name": product['name'],
+            "sku": product['sku'],
+            "original_price": original_price,
+            "discounted_price": discounted_price,
+            "original_profit": original_profit,
+            "new_profit": new_profit,
+        })
+    return {"data": simulation_results}
 

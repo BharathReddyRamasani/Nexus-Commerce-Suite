@@ -12,7 +12,6 @@ def record_sale(items, payments, customer_phone=None):
     low_stock_alerts = []
 
     try:
-        # --- 1. VALIDATION PHASE ---
         product_details = {}
         for item in items:
             sku = item['sku'].upper()
@@ -43,7 +42,6 @@ def record_sale(items, payments, customer_phone=None):
                 return {"success": False, "message": f"Error: Customer with phone number '{customer_phone}' not found.", "alerts": []}
             customer_id = customer_res.data['id']
 
-        # --- 2. EXECUTION PHASE (Database writes) ---
         sale_insert_res = supabase.table("sales").insert({
             "customer_id": customer_id,
             "total_amount": total_amount,
