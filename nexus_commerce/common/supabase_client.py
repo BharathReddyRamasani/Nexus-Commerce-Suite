@@ -2,46 +2,48 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# --- Global variable to hold the single client instance ---
-# This is a best practice to ensure we don't create multiple connections.
-supabase_client: Client = None
-
-def initialize_supabase_client():
-    """
-    Initializes the global Supabase client.
-    This function should be called only once when the application starts.
-    It reads credentials from the .env file and establishes the connection.
-    """
-    global supabase_client
-
-    # Load environment variables from the .env file in the project root
-    load_dotenv()
-
-    # Get the Supabase URL and Key from the environment
-    url: str = os.environ.get("SUPABASE_URL")
-    key: str = os.environ.get("SUPABASE_KEY")
-
-    # Robust check to ensure credentials are provided
-    if not url or not key:
-        raise ValueError("FATAL ERROR: SUPABASE_URL and SUPABASE_KEY must be set in your .env file.")
-
-    try:
-        # Create the client instance and store it in the global variable
-        supabase_client = create_client(url, key)
-    except Exception as e:
-        # Catch any other potential errors during client creation
-        raise ConnectionError(f"Could not create Supabase client. Please check your credentials. Details: {e}")
+# --- Global variable to hold the single, shared client instance ---
+# We use a leading underscore to indicate it's for internal use within this module.
+_supabase_client: Client = None
 
 def get_supabase_client():
     """
-    Returns the shared Supabase client instance.
-    All logic files across the application will call this function to get the
-    initialized client and interact with the database.
+    Creates and returns the Supabase client instance.
+    Uses a singleton pattern to ensure only one client is created per session.
+    This is the only function that other modules should import.
     """
-    if supabase_client is None:
-        # This is a safeguard. If any part of the code tries to get the client
-        # before it's been initialized, it will raise a clear error.
-        raise ConnectionError("Supabase client has not been initialized. Please run initialize_supabase_client() on startup.")
+    global _supabase_client
+
+    # If the client has not been created yet, this block will run.
+    if _supabase_client is None:
+        # Load environment variables from the .env file or Streamlit secrets
+        load_dotenv()
+        url: str = os.environ.get("SUPABASE_URL")
+        key: str = os.environ.get("SUPABASE_KEY")
+
+        # A robust check for credentials
+        if not url or not key:
+            raise ValueError("FATAL ERROR: SUPABASE_URL and SUPABASE_KEY must be set in your .env file or Streamlit secrets.")
+
+        try:
+            # Create the client and store it in the global variable for reuse.
+            _supabase_client = create_client(url, key)
+        except Exception as e:
+            raise ConnectionError(f"Could not create Supabase client. Please check your credentials. Details: {e}")
     
-    return supabase_client
+    # Return the existing client instance.
+    return _supabase_client
+
+def check_connection():
+    """
+    A simple function to be called on startup to explicitly verify credentials
+    and provide a clear error message to the user if they are invalid.
+    """
+    try:
+        # Attempt to get the client, which will trigger initialization if needed.
+        get_supabase_client()
+        return True
+    except (ValueError, ConnectionError) as e:
+        # If an error occurs, re-raise it to be caught by the main app page.
+        raise e
 
