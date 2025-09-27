@@ -29,8 +29,9 @@ if init_connection():
         st.session_state.user_email = ""
 
     # --- Header and Branding ---
-    # --- FIX: Replaced 'use_column_width' with 'use_container_width' ---
-    st.image("https://placehold.co/600x150/2c3e50/ecf0f1?text=Nexus+Commerce&font=raleway", use_container_width=True)
+    # --- THIS IS THE FINAL FIX ---
+    # Replaced 'use_container_width=True' with the compatible 'use_column_width=True'
+    st.image("https://placehold.co/600x150/2c3e50/ecf0f1?text=Nexus+Commerce&font=raleway", use_column_width=True)
     st.title("Business Management Suite")
 
     # --- Auth Check ---
