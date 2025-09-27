@@ -1,13 +1,6 @@
-# click==8.1.7
-# python-dotenv==1.0.1
-# supabase==2.40.7
-# tabulate==0.9.0
-
-
 streamlit==1.38.0
-
 pandas==2.2.2
-
 supabase==2.5.0
-
 python-dotenv==1.0.1
+# Pinning pyarrow to a known stable version to avoid compilation issues
+pyarrow==15.0.0
