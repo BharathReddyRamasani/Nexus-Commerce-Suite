@@ -113,6 +113,24 @@ def render_sidebar():
                 st.write(f"- Sales: {len(sb.table('sales').select('id', count='exact').execute().data)}")
                 
                 st.info("If counts are 0 but tables have data, check **Supabase RLS Policies**.")
+                
+                with st.expander("🚨 Emergency Visibility Fix SQL", expanded=False):
+                    st.caption("Run this in Supabase SQL Editor if data is still not appearing:")
+                    st.code("""
+-- FORCE RESET ALL VISIBILITY
+ALTER TABLE products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE customers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE sales DISABLE ROW LEVEL SECURITY;
+ALTER TABLE sale_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses DISABLE ROW LEVEL SECURITY;
+ALTER TABLE returns DISABLE ROW LEVEL SECURITY;
+ALTER TABLE categories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE brands DISABLE ROW LEVEL SECURITY;
+
+-- RE-GRANT ALL PERMISSIONS
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, postgres;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, postgres;
+""", language="sql")
             except Exception as e:
                 st.error(f"Diagnostics Failed: {e}")
 
