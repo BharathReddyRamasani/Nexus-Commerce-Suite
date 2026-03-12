@@ -28,30 +28,38 @@ table_status = check_tables_exist()
 missing_tables = [t for t, exists in table_status.items() if not exists]
 
 if missing_tables:
-    st.warning(f"⚠️ **Database Setup Required** — {len(missing_tables)} table(s) are missing: `{'`, `'.join(missing_tables)}`", icon="⚠️")
-    st.markdown("""
+    st.markdown(f"""
     <div style="
-        background: linear-gradient(135deg, rgba(245,158,11,0.1), rgba(239,68,68,0.05));
-        border: 1px solid rgba(245,158,11,0.3);
-        border-radius: 16px;
-        padding: 1.5rem 2rem;
-        margin: 1rem 0;
+        background: rgba(245, 158, 11, 0.05);
+        border-left: 5px solid #f59e0b;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
     ">
-        <div style="font-weight: 700; font-size: 1.1rem; color: #f59e0b; margin-bottom: 0.8rem;">📋 Quick Setup Guide</div>
-        <div style="color: rgba(226,232,240,0.8); font-size: 0.88rem; line-height: 1.7;">
-            <strong>Step 1:</strong> Go to your <a href="https://supabase.com/dashboard" target="_blank" style="color: #8b5cf6;">Supabase Dashboard</a><br>
-            <strong>Step 2:</strong> Open <strong>SQL Editor</strong> → Click <strong>New Query</strong><br>
-            <strong>Step 3:</strong> Copy the SQL below and paste it in the editor<br>
-            <strong>Step 4:</strong> Click <strong>Run</strong> (the green play button)<br>
-            <strong>Step 5:</strong> Come back here and <strong>refresh this page</strong>
-        </div>
+        <h3 style="color: #f59e0b; margin: 0 0 0.5rem 0;">🏗️ Database Setup Required</h3>
+        <p style="color: rgba(226, 232, 240, 0.7); margin: 0; font-size: 0.9rem;">
+            The enterprise suite is connected, but <strong>{len(missing_tables)} metadata tables</strong> are missing: 
+            <code>{', '.join(missing_tables)}</code>
+        </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    col_guide, col_sql = st.columns([1, 1.5], gap="large")
+    
+    with col_guide:
+        st.markdown("""
+        #### 📋 Integration Steps
+        1. Open your [Supabase Dashboard](https://supabase.com/dashboard)
+        2. Navigate to **SQL Editor** → **New Query**
+        3. Paste the enterprise schema from the right
+        4. Click **Run** and **Refresh** this page
+        """)
+        if st.button("🔄 Refresh Application State", type="primary", use_container_width=True):
+            st.rerun()
 
-    with st.expander("📄 Click to view the complete SQL (copy all of it)", expanded=True):
-        st.code(get_setup_sql(), language="sql")
-
-    st.info("👆 Copy the SQL above, run it in Supabase SQL Editor, then refresh this page.", icon="🔄")
+    with col_sql:
+        with st.expander("📄 Click to View Complete Enterprise SQL", expanded=True):
+            st.code(get_setup_sql(), language="sql")
     st.stop()
 
 # ── Session State ──
@@ -61,7 +69,7 @@ if "authenticated" not in st.session_state:
 
 # ── Already Logged In ──
 if st.session_state.authenticated:
-    st.success(f"You are already logged in as **{st.session_state.user_email}**.", icon="✅")
+    st.success(f"Verified Session: **{st.session_state.user_email}**", icon="🛡️")
     if st.button("Go to Dashboard →", use_container_width=True, type="primary"):
         st.switch_page("pages/1_Dashboard.py")
     st.stop()
@@ -70,7 +78,6 @@ if st.session_state.authenticated:
 col_styled, col_form = st.columns([1.4, 1], gap="large")
 
 with col_styled:
-    # ── Premium 3D Branding ──
     # ── Premium 3D Branding ──
     branding_html = """<div class="perspective-box">
 <div class="card-3d">
@@ -237,7 +244,7 @@ with col_styled:
     50% { transform: translateZ(160px) translateY(-30px) rotateY(20deg); }
 }
 </style>"""
-    st.markdown(branding_html, unsafe_allow_html=True)
+    st.html(branding_html)
 
 with col_form:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
