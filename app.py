@@ -232,6 +232,7 @@ with col_form:
                     if response['success']:
                         st.session_state.authenticated = True
                         st.session_state.user_email = email
+                        st.session_state.user_id = response.get('user_id')
                         st.success("Access Granted. Initializing...", icon="✅")
                         time.sleep(1)
                         st.switch_page("pages/1_Dashboard.py")

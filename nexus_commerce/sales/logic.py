@@ -4,6 +4,7 @@ Nexus Commerce Suite — Sales Logic
 Core transaction processing: validation, recording, and stock updates.
 """
 import logging
+import streamlit as st
 from ..common.supabase_client import get_supabase_client
 
 logger = logging.getLogger("nexus_commerce.sales")
@@ -31,7 +32,10 @@ def record_sale(items: list, payments: list, customer_phone: str = None) -> dict
             sku = item['sku'].strip().upper()
             sale_quantity = item['quantity']
 
-            product_res = supabase.table("products").select("*").eq("sku", sku).maybe_single().execute()
+            product_res = supabase.table("products").select("*") \
+                .eq("sku", sku) \
+                .eq("user_id", st.session_state.get("user_id")) \
+                .maybe_single().execute()
             if not product_res.data:
                 return {"success": False, "message": f"Product with SKU '{sku}' not found.", "alerts": []}
 
@@ -60,7 +64,10 @@ def record_sale(items: list, payments: list, customer_phone: str = None) -> dict
         # Validate customer
         customer_id = None
         if customer_phone:
-            customer_res = supabase.table("customers").select("id").eq("phone", customer_phone.strip()).maybe_single().execute()
+            customer_res = supabase.table("customers").select("id") \
+                .eq("phone", customer_phone.strip()) \
+                .eq("user_id", st.session_state.get("user_id")) \
+                .maybe_single().execute()
             if not customer_res.data:
                 return {"success": False, "message": f"Customer with phone '{customer_phone}' not found.", "alerts": []}
             customer_id = customer_res.data['id']
@@ -72,11 +79,11 @@ def record_sale(items: list, payments: list, customer_phone: str = None) -> dict
             "customer_id": customer_id,
             "total_amount": total_amount,
             "total_tax": total_tax,
-            "total_profit": total_profit
+            "total_profit": total_profit,
+            "user_id": st.session_state.get("user_id")
         }).execute()
         sale_id = sale_insert_res.data[0]['id']
 
-        # 2. Insert line items and update stock
         for item in items:
             sku = item['sku'].strip().upper()
             product = product_details[sku]
@@ -86,14 +93,15 @@ def record_sale(items: list, payments: list, customer_phone: str = None) -> dict
                 "product_id": product['id'],
                 "quantity": item['quantity'],
                 "price_per_unit": product['selling_price'],
-                "tax_amount": (product['selling_price'] * item['quantity']) * (product.get('tax_rate', 0) / 100.0)
+                "tax_amount": (product['selling_price'] * item['quantity']) * (product.get('tax_rate', 0) / 100.0),
+                "user_id": st.session_state.get("user_id")
             }).execute()
 
             new_quantity = product['quantity_on_hand'] - item['quantity']
             supabase.table("products").update({
                 "quantity_on_hand": new_quantity,
                 "last_sale_date": "now()"
-            }).eq("sku", sku).execute()
+            }).eq("sku", sku).eq("user_id", st.session_state.get("user_id")).execute()
 
             if new_quantity < 5:
                 low_stock_alerts.append(f"⚠️ '{product['name']}' ({sku}) stock critically low ({new_quantity} remaining)")
@@ -103,7 +111,8 @@ def record_sale(items: list, payments: list, customer_phone: str = None) -> dict
             supabase.table("payments").insert({
                 "sale_id": sale_id,
                 "payment_method": payment['method'],
-                "amount": payment['amount']
+                "amount": payment['amount'],
+                "user_id": st.session_state.get("user_id")
             }).execute()
 
         return {"success": True, "message": f"Sale #{sale_id[:8]} recorded successfully!", "alerts": low_stock_alerts}
@@ -122,13 +131,20 @@ def process_return(sale_id: str, product_sku: str, quantity: int, reason: str = 
     supabase = get_supabase_client()
     try:
         # 1. Get product details
-        product_res = supabase.table("products").select("id, name, quantity_on_hand, selling_price, tax_rate, cost_price").eq("sku", product_sku.upper()).maybe_single().execute()
+        product_res = supabase.table("products").select("id, name, quantity_on_hand, selling_price, tax_rate, cost_price") \
+            .eq("sku", product_sku.upper()) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
         if not product_res.data:
             return {"success": False, "message": "Product not found."}
         product = product_res.data
 
         # 2. Get sale item details
-        item_res = supabase.table("sale_items").select("*").eq("sale_id", sale_id).eq("product_id", product['id']).maybe_single().execute()
+        item_res = supabase.table("sale_items").select("*") \
+            .eq("sale_id", sale_id) \
+            .eq("product_id", product['id']) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
         if not item_res.data:
             return {"success": False, "message": "This product was not found in the original sale."}
         
@@ -148,7 +164,8 @@ def process_return(sale_id: str, product_sku: str, quantity: int, reason: str = 
             "product_id": product['id'],
             "quantity": quantity,
             "refund_amount": refund_amount,
-            "reason": reason
+            "reason": reason,
+            "user_id": st.session_state.get("user_id")
         }).execute()
 
         # 5. Restock Product
@@ -156,14 +173,17 @@ def process_return(sale_id: str, product_sku: str, quantity: int, reason: str = 
         supabase.table("products").update({"quantity_on_hand": new_qty}).eq("id", product['id']).execute()
 
         # 6. Adjust Sale Totals (Optional but recommended for consistency)
-        sale_res = supabase.table("sales").select("*").eq("id", sale_id).maybe_single().execute()
+        sale_res = supabase.table("sales").select("*") \
+            .eq("id", sale_id) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
         if sale_res.data:
             current_sale = sale_res.data
             supabase.table("sales").update({
                 "total_amount": float(current_sale['total_amount']) - refund_amount,
                 "total_profit": float(current_sale['total_profit']) - lost_profit,
                 "total_tax": float(current_sale.get('total_tax', 0)) - (unit_tax * quantity)
-            }).eq("id", sale_id).execute()
+            }).eq("id", sale_id).eq("user_id", st.session_state.get("user_id")).execute()
 
         logger.info("Processed return: Sale #%s, SKU: %s, Qty: %d", sale_id[:8], product_sku, quantity)
         return {"success": True, "message": f"Successfully processed return for {quantity} units of '{product['name']}'. Refunded ₹{refund_amount:,.2f}."}

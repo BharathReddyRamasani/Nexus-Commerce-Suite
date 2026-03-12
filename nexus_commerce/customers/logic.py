@@ -4,6 +4,7 @@ Nexus Commerce Suite — Customer Logic
 CRUD operations and purchase history for customers.
 """
 import logging
+import streamlit as st
 from ..common.supabase_client import get_supabase_client
 
 logger = logging.getLogger("nexus_commerce.customers")
@@ -16,7 +17,8 @@ def add_customer(name: str, phone: str, email: str) -> str:
         customer_data = {
             "name": name.strip(),
             "phone": phone.strip(),
-            "email": email.strip() if email else None
+            "email": email.strip() if email else None,
+            "user_id": st.session_state.get("user_id")
         }
         logger.info("Adding customer: %s (%s)", name, phone)
         response = supabase.table("customers").insert(customer_data).execute()
@@ -45,7 +47,10 @@ def find_customer_by_phone(phone: str):
     supabase = get_supabase_client()
     try:
         logger.info("Looking up customer by phone: %s", phone)
-        response = supabase.table("customers").select("id, name, phone, email").eq("phone", phone.strip()).maybe_single().execute()
+        response = supabase.table("customers").select("id, name, phone, email") \
+            .eq("phone", phone.strip()) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
 
         if not response.data:
             return None
@@ -53,7 +58,10 @@ def find_customer_by_phone(phone: str):
         customer_data = response.data
 
         # Fetch sales
-        sales_response = supabase.table("sales").select("*").eq("customer_id", customer_data['id']).execute()
+        sales_response = supabase.table("sales").select("*") \
+            .eq("customer_id", customer_data['id']) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         customer_data['sales'] = sales_response.data
 
         # Fetch items for each sale (with product details)
@@ -72,7 +80,9 @@ def get_all_customers() -> list | str:
     """Retrieve all customers ordered by name. Returns list or error string."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("customers").select("*").order("name").execute()
+        response = supabase.table("customers").select("*") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .order("name").execute()
         return response.data
     except Exception as e:
         logger.error("Failed to fetch customers: %s", e)
@@ -85,7 +95,10 @@ def update_customer(phone: str, updates: dict) -> str:
     try:
         phone_clean = phone.strip()
         logger.info("Updating customer phone '%s' with: %s", phone_clean, updates)
-        response = supabase.table("customers").update(updates).eq("phone", phone_clean).execute()
+        response = supabase.table("customers").update(updates) \
+            .eq("phone", phone_clean) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
         if not response.data:
@@ -107,13 +120,19 @@ def delete_customer_by_phone(phone: str) -> str:
         logger.info("Deleting customer phone: %s", phone_clean)
 
         # Check existence
-        customer_res = supabase.table("customers").select("id, name").eq("phone", phone_clean).maybe_single().execute()
+        customer_res = supabase.table("customers").select("id, name") \
+            .eq("phone", phone_clean) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
         if not customer_res.data:
             return f"Error: Customer with phone '{phone_clean}' not found."
 
         customer_name = customer_res.data['name']
 
-        response = supabase.table("customers").delete().eq("phone", phone_clean).execute()
+        response = supabase.table("customers").delete() \
+            .eq("phone", phone_clean) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
 

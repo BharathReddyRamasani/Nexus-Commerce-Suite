@@ -8,6 +8,7 @@ import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+import streamlit as st
 from ..common.supabase_client import get_supabase_client
 
 logger = logging.getLogger("nexus_commerce.analytics")
@@ -23,7 +24,9 @@ def get_abc_analysis() -> dict:
     try:
         logger.info("Running ABC Analysis...")
         # Get all sale items with product info
-        items_res = supabase.table("sale_items").select("quantity, price_per_unit, product_id, products(name, sku)").execute()
+        items_res = supabase.table("sale_items").select("quantity, price_per_unit, product_id, products(name, sku)") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
 
         if not items_res.data:
             return {"data": [], "summary": {}}
@@ -82,7 +85,9 @@ def get_sales_forecast(days_history: int = 30, days_forecast: int = 7) -> dict:
     try:
         logger.info("Running sales forecast (history=%dd, forecast=%dd)", days_history, days_forecast)
         start_date = datetime.now() - timedelta(days=days_history)
-        response = supabase.table("sales").select("sale_date, total_amount").gte("sale_date", start_date.isoformat()).execute()
+        response = supabase.table("sales").select("sale_date, total_amount") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .gte("sale_date", start_date.isoformat()).execute()
 
         if not response.data or len(response.data) < 3:
             return {"error": "Need at least 3 days of sales data for forecasting."}
@@ -154,8 +159,12 @@ def get_correlation_analysis() -> dict:
     supabase = get_supabase_client()
     try:
         logger.info("Running correlation analysis...")
-        products_res = supabase.table("products").select("id, cost_price, selling_price, quantity_on_hand").execute()
-        items_res = supabase.table("sale_items").select("product_id, quantity, price_per_unit").execute()
+        products_res = supabase.table("products").select("id, cost_price, selling_price, quantity_on_hand") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
+        items_res = supabase.table("sale_items").select("product_id, quantity, price_per_unit") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
 
         if not products_res.data or not items_res.data:
             return {"error": "Need product and sales data for correlation analysis."}
@@ -215,7 +224,10 @@ def get_rfm_analysis() -> dict:
     supabase = get_supabase_client()
     try:
         logger.info("Running RFM Analysis...")
-        sales_res = supabase.table("sales").select("customer_id, total_amount, sale_date").not_.is_("customer_id", "null").execute()
+        sales_res = supabase.table("sales").select("customer_id, total_amount, sale_date") \
+            .not_.is_("customer_id", "null") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
 
         if not sales_res.data or len(sales_res.data) < 3:
             return {"error": "Need at least 3 customer-linked sales for RFM analysis."}
@@ -254,7 +266,10 @@ def get_rfm_analysis() -> dict:
 
         # Get customer names
         customer_ids = rfm['customer_id'].tolist()
-        customers_res = supabase.table("customers").select("id, name, phone").in_("id", customer_ids).execute()
+        customers_res = supabase.table("customers").select("id, name, phone") \
+            .in_("id", customer_ids) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         customers_map = {c['id']: c for c in customers_res.data}
 
         rfm['customer_name'] = rfm['customer_id'].map(lambda x: customers_map.get(x, {}).get('name', 'Unknown'))
@@ -284,7 +299,9 @@ def get_moving_averages(days: int = 90) -> dict:
     try:
         logger.info("Calculating moving averages over %d days", days)
         start_date = datetime.now() - timedelta(days=days)
-        response = supabase.table("sales").select("sale_date, total_amount").gte("sale_date", start_date.isoformat()).execute()
+        response = supabase.table("sales").select("sale_date, total_amount") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .gte("sale_date", start_date.isoformat()).execute()
 
         if not response.data:
             return {"error": "No sales data available."}

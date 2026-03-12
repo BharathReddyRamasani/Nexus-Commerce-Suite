@@ -61,6 +61,13 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
+def reset_supabase_client():
+    """Clears the singleton client to force a re-read of credentials."""
+    global _supabase_client
+    _supabase_client = None
+    logger.info("Supabase client reset. Will re-initialize on next request.")
+
+
 def check_connection() -> bool:
     """
     Verify credentials on startup. Raises ValueError or ConnectionError

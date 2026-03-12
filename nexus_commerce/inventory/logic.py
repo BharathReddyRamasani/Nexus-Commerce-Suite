@@ -4,6 +4,7 @@ Nexus Commerce Suite — Inventory Logic
 CRUD operations and stock management for products.
 """
 import logging
+import streamlit as st
 from ..common.supabase_client import get_supabase_client
 
 logger = logging.getLogger("nexus_commerce.inventory")
@@ -13,7 +14,9 @@ def get_categories() -> list:
     """Retrieve all product categories."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("categories").select("*").order("name").execute()
+        response = supabase.table("categories").select("*") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .order("name").execute()
         return response.data
     except Exception as e:
         logger.error("Failed to fetch categories: %s", e)
@@ -23,7 +26,9 @@ def get_brands() -> list:
     """Retrieve all brands."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("brands").select("*").order("name").execute()
+        response = supabase.table("brands").select("*") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .order("name").execute()
         return response.data
     except Exception as e:
         logger.error("Failed to fetch brands: %s", e)
@@ -42,9 +47,9 @@ def add_product(sku: str, name: str, cost: float, sell: float, qty: int = 0, des
             "quantity_on_hand": qty,
             "description": desc,
             "category_id": category_id,
-            "brand_id": brand_id
+            "user_id": st.session_state.get("user_id")
         }
-        logger.info("Adding product: %s (SKU: %s)", name, sku.upper())
+        logger.info("Adding product: %s (SKU: %s) for User: %s", name, sku.upper(), st.session_state.get("user_id"))
         response = supabase.table("products").insert(product_data).execute()
 
         if hasattr(response, 'error') and response.error:
@@ -63,8 +68,9 @@ def get_all_products() -> list | str:
     """Retrieve all products ordered by name. Returns list or error string."""
     supabase = get_supabase_client()
     try:
-        # Emergency God-Mode Bypass: Remove all filters to guarantee visibility
-        response = supabase.table("products").select("*").order("name").execute()
+        response = supabase.table("products").select("*") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .order("name").execute()
         return response.data
     except Exception as e:
         logger.error("Failed to fetch products: %s", e)
@@ -75,7 +81,10 @@ def find_product_by_sku(sku: str) -> dict | None | str:
     """Find a product by SKU. Returns dict if found, None if not, or error string."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("products").select("*").eq("sku", sku.strip().upper()).maybe_single().execute()
+        response = supabase.table("products").select("*") \
+            .eq("sku", sku.strip().upper()) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
         return response.data
     except Exception as e:
         logger.error("Failed to find product SKU '%s': %s", sku, e)
@@ -87,7 +96,10 @@ def update_product_by_sku(sku: str, updates: dict) -> str:
     supabase = get_supabase_client()
     try:
         logger.info("Updating product SKU '%s' with: %s", sku.upper(), updates)
-        response = supabase.table("products").update(updates).eq("sku", sku.strip().upper()).execute()
+        response = supabase.table("products").update(updates) \
+            .eq("sku", sku.strip().upper()) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
         logger.info("Product SKU '%s' updated.", sku.upper())
@@ -108,7 +120,10 @@ def adjust_stock_quantity(sku: str, change_quantity: int, reason: str) -> str:
         logger.info("Stock adjustment request: SKU=%s, change=%d, reason='%s'", sku_upper, change_quantity, reason)
 
         # Step 1: Find product
-        product_res = supabase.table("products").select("id, quantity_on_hand").eq("sku", sku_upper).maybe_single().execute()
+        product_res = supabase.table("products").select("id, quantity_on_hand") \
+            .eq("sku", sku_upper) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
         if not product_res.data:
             return f"Error: Product with SKU '{sku_upper}' not found."
 
@@ -129,7 +144,10 @@ def adjust_stock_quantity(sku: str, change_quantity: int, reason: str) -> str:
             raise Exception(f"Failed to create audit record: {adj_response.error.message}")
 
         # Step 3: Update stock
-        update_response = supabase.table("products").update({"quantity_on_hand": new_qty}).eq("sku", sku_upper).execute()
+        update_response = supabase.table("products").update({"quantity_on_hand": new_qty}) \
+            .eq("sku", sku_upper) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         if hasattr(update_response, 'error') and update_response.error:
             raise Exception(f"Audit record created, but stock update failed: {update_response.error.message}")
 
@@ -148,14 +166,20 @@ def delete_product_by_sku(sku: str) -> str:
         logger.info("Deleting product SKU: %s", sku_upper)
 
         # Check if product exists
-        product_res = supabase.table("products").select("id, name").eq("sku", sku_upper).maybe_single().execute()
+        product_res = supabase.table("products").select("id, name") \
+            .eq("sku", sku_upper) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .maybe_single().execute()
         if not product_res.data:
             return f"Error: Product with SKU '{sku_upper}' not found."
 
         product_name = product_res.data['name']
 
         # Soft Delete: Update is_active to False instead of deleting
-        response = supabase.table("products").update({"is_active": False}).eq("sku", sku_upper).execute()
+        response = supabase.table("products").update({"is_active": False}) \
+            .eq("sku", sku_upper) \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
 
@@ -172,7 +196,9 @@ def get_inventory_summary() -> dict:
     """Get inventory summary: total value, potential profit, counts by status."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("products").select("cost_price, selling_price, quantity_on_hand").execute()
+        response = supabase.table("products").select("cost_price, selling_price, quantity_on_hand") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
         if not response.data:
             return {"total_cost_value": 0, "total_sell_value": 0, "potential_profit": 0, "total_units": 0}
 

@@ -104,15 +104,23 @@ def render_sidebar():
             try:
                 sb = get_supabase_client()
                 url = sb.supabase_url if hasattr(sb, 'supabase_url') else "Unknown"
-                st.write(f"**Connected Project:** `{url[:25]}...`")
+                st.write(f"**Current URL:** `{url}`")
                 
+                if st.button("🔄 Refresh Connection", type="secondary", use_container_width=True):
+                    from ..common.supabase_client import reset_supabase_client
+                    reset_supabase_client()
+                    st.success("Credentials cleared. Next action will use updated Secrets.")
+                    st.rerun()
+
                 # Check counts to verify visibility
                 st.write("**Visibility Check:**")
                 st.write(f"- Products: {len(sb.table('products').select('id', count='exact').execute().data)}")
                 st.write(f"- Customers: {len(sb.table('customers').select('id', count='exact').execute().data)}")
                 st.write(f"- Sales: {len(sb.table('sales').select('id', count='exact').execute().data)}")
                 
-                st.info("If counts are 0 but tables have data, check **Supabase RLS Policies**.")
+                st.divider()
+                st.write("🛰️ **How to Switch Projects:**")
+                st.caption("If the URL above is wrong, update your `SUPABASE_URL` and `SUPABASE_KEY` in the Streamlit Cloud 'Secrets' settings, then click 'Refresh Connection' above.")
                 
                 with st.expander("🚨 Emergency Visibility Fix SQL", expanded=False):
                     st.caption("Run this in Supabase SQL Editor if data is still not appearing:")

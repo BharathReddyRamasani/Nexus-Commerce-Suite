@@ -5,6 +5,7 @@ Business intelligence: profit reports, product health, payment analysis, and sal
 """
 import logging
 from datetime import datetime, timedelta
+import streamlit as st
 from ..common.supabase_client import get_supabase_client
 from ..inventory.logic import find_product_by_sku
 
@@ -36,6 +37,7 @@ def get_profit_report(period: str) -> dict:
     try:
         logger.info("Generating profit report for period: %s", period)
         response = supabase.table("sales").select("total_amount, total_profit, total_tax") \
+            .eq("user_id", st.session_state.get("user_id")) \
             .gte("sale_date", start_date.isoformat()) \
             .lte("sale_date", end_date.isoformat()).execute()
 
@@ -63,7 +65,9 @@ def get_product_health_report() -> dict:
     supabase = get_supabase_client()
     try:
         logger.info("Generating product health report")
-        response = supabase.table("products").select("*").execute()
+        response = supabase.table("products").select("*") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .execute()
 
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
@@ -105,6 +109,7 @@ def get_payment_summary(period: str) -> dict:
     try:
         logger.info("Generating payment summary for period: %s", period)
         sales_response = supabase.table("sales").select("id") \
+            .eq("user_id", st.session_state.get("user_id")) \
             .gte("sale_date", start_date.isoformat()) \
             .lte("sale_date", end_date.isoformat()).execute()
 
@@ -112,7 +117,9 @@ def get_payment_summary(period: str) -> dict:
             return {"summary": {}, "start_date": start_date, "end_date": end_date}
 
         sale_ids = [sale['id'] for sale in sales_response.data]
-        payments_response = supabase.table("payments").select("payment_method, amount").in_("sale_id", sale_ids).execute()
+        payments_response = supabase.table("payments").select("payment_method, amount") \
+            .eq("user_id", st.session_state.get("user_id")) \
+            .in_("sale_id", sale_ids).execute()
 
         summary = {}
         for payment in payments_response.data:
@@ -160,6 +167,7 @@ def get_sales_over_time(days: int = 30) -> dict:
     try:
         start_date = datetime.now() - timedelta(days=days)
         response = supabase.table("sales").select("sale_date, total_amount") \
+            .eq("user_id", st.session_state.get("user_id")) \
             .gte("sale_date", start_date.isoformat()).execute()
 
         if hasattr(response, 'error') and response.error:

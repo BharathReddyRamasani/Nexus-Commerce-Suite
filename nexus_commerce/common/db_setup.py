@@ -44,21 +44,23 @@ def get_setup_sql() -> str:
 -- 1. PRODUCTS
         -- 1. Categorization
         CREATE TABLE IF NOT EXISTS categories (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             name TEXT UNIQUE NOT NULL,
             description TEXT,
+            user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
             created_at TIMESTAMPTZ DEFAULT now()
         );
 
         CREATE TABLE IF NOT EXISTS brands (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             name TEXT UNIQUE NOT NULL,
+            user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
             created_at TIMESTAMPTZ DEFAULT now()
         );
 
         -- 2. Products
         CREATE TABLE IF NOT EXISTS products (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             sku TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             description TEXT,
@@ -69,6 +71,7 @@ def get_setup_sql() -> str:
             is_active BOOLEAN DEFAULT TRUE,
             category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
             brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
+            user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
             last_sale_date TIMESTAMPTZ,
             created_at TIMESTAMPTZ DEFAULT now(),
             updated_at TIMESTAMPTZ DEFAULT now()
@@ -81,6 +84,7 @@ CREATE TABLE IF NOT EXISTS customers (
     name TEXT NOT NULL,
     phone TEXT NOT NULL UNIQUE,
     email TEXT,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -93,6 +97,7 @@ CREATE TABLE IF NOT EXISTS sales (
     total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
     total_tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
     total_profit NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     sale_date TIMESTAMPTZ DEFAULT now(),
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -106,6 +111,7 @@ CREATE TABLE IF NOT EXISTS sale_items (
     quantity INTEGER NOT NULL DEFAULT 1,
     price_per_unit NUMERIC(12, 2) NOT NULL DEFAULT 0,
     tax_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items(sale_id);
@@ -116,37 +122,41 @@ CREATE TABLE IF NOT EXISTS payments (
     sale_id UUID NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
     payment_method TEXT NOT NULL DEFAULT 'Cash',
     amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_payments_sale ON payments(sale_id);
 
 -- 6. STOCK ADJUSTMENTS
         CREATE TABLE IF NOT EXISTS stock_adjustments (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             product_id UUID REFERENCES products(id) ON DELETE CASCADE,
             warehouse_id UUID, -- Optional for now
             change_amount INTEGER NOT NULL,
             reason TEXT,
+            user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
             created_at TIMESTAMPTZ DEFAULT now()
         );
 
         CREATE TABLE IF NOT EXISTS expenses (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             category TEXT NOT NULL,
             amount NUMERIC(12, 2) NOT NULL,
             expense_date DATE DEFAULT CURRENT_DATE,
             description TEXT,
+            user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
             created_at TIMESTAMPTZ DEFAULT now()
         );
 
         -- 8. Returns
         CREATE TABLE IF NOT EXISTS returns (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             sale_id UUID REFERENCES sales(id) ON DELETE CASCADE,
             product_id UUID REFERENCES products(id) ON DELETE CASCADE,
             quantity INTEGER NOT NULL,
             refund_amount NUMERIC(12, 2) NOT NULL,
             reason TEXT,
+            user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
             created_at TIMESTAMPTZ DEFAULT now()
         );
 CREATE INDEX IF NOT EXISTS idx_adjustments_product ON stock_adjustments(product_id);
@@ -180,35 +190,35 @@ ALTER TABLE returns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE brands ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow all on products" ON products;
-CREATE POLICY "Allow all on products" ON products FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own products" ON products;
+CREATE POLICY "Users can only see their own products" ON products FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on customers" ON customers;
-CREATE POLICY "Allow all on customers" ON customers FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own customers" ON customers;
+CREATE POLICY "Users can only see their own customers" ON customers FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on sales" ON sales;
-CREATE POLICY "Allow all on sales" ON sales FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own sales" ON sales;
+CREATE POLICY "Users can only see their own sales" ON sales FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on sale_items" ON sale_items;
-CREATE POLICY "Allow all on sale_items" ON sale_items FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own sale_items" ON sale_items;
+CREATE POLICY "Users can only see their own sale_items" ON sale_items FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on payments" ON payments;
-CREATE POLICY "Allow all on payments" ON payments FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own payments" ON payments;
+CREATE POLICY "Users can only see their own payments" ON payments FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on stock_adjustments" ON stock_adjustments;
-CREATE POLICY "Allow all on stock_adjustments" ON stock_adjustments FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own stock_adjustments" ON stock_adjustments;
+CREATE POLICY "Users can only see their own stock_adjustments" ON stock_adjustments FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on expenses" ON expenses;
-CREATE POLICY "Allow all on expenses" ON expenses FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own expenses" ON expenses;
+CREATE POLICY "Users can only see their own expenses" ON expenses FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on returns" ON returns;
-CREATE POLICY "Allow all on returns" ON returns FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own returns" ON returns;
+CREATE POLICY "Users can only see their own returns" ON returns FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on categories" ON categories;
-CREATE POLICY "Allow all on categories" ON categories FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own categories" ON categories;
+CREATE POLICY "Users can only see their own categories" ON categories FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow all on brands" ON brands;
-CREATE POLICY "Allow all on brands" ON brands FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can only see their own brands" ON brands;
+CREATE POLICY "Users can only see their own brands" ON brands FOR ALL USING (auth.uid() = user_id);
 
 -- ═══════════════════════════════════════════════════════════════
 -- ✅ DONE! All tables created successfully.

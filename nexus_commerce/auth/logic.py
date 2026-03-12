@@ -57,7 +57,11 @@ def sign_in(email: str, password: str) -> dict:
 
         if response.session:
             logger.info("Login successful for %s", email)
-            return {"success": True, "message": "Login successful!"}
+            return {
+                "success": True, 
+                "message": "Login successful!",
+                "user_id": response.user.id
+            }
         else:
             return {"success": False, "message": "An unknown error occurred during login."}
 
