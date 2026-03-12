@@ -26,6 +26,10 @@ BEGIN
         ALTER TABLE products ADD COLUMN user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid();
     END IF;
 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'description') THEN
+        ALTER TABLE products ADD COLUMN description TEXT;
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'user_id') THEN
         ALTER TABLE customers ADD COLUMN user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid();
     END IF;
@@ -71,15 +75,34 @@ DROP POLICY IF EXISTS "Allow all on brands" ON brands;
 
 -- ── 3. CREATE NEW ISOLATION POLICIES ──
 
+DROP POLICY IF EXISTS "Users can only see their own products" ON products;
 CREATE POLICY "Users can only see their own products" ON products FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own customers" ON customers;
 CREATE POLICY "Users can only see their own customers" ON customers FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own sales" ON sales;
 CREATE POLICY "Users can only see their own sales" ON sales FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own sale_items" ON sale_items;
 CREATE POLICY "Users can only see their own sale_items" ON sale_items FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own payments" ON payments;
 CREATE POLICY "Users can only see their own payments" ON payments FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own stock_adjustments" ON stock_adjustments;
 CREATE POLICY "Users can only see their own stock_adjustments" ON stock_adjustments FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own expenses" ON expenses;
 CREATE POLICY "Users can only see their own expenses" ON expenses FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own returns" ON returns;
 CREATE POLICY "Users can only see their own returns" ON returns FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own categories" ON categories;
 CREATE POLICY "Users can only see their own categories" ON categories FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can only see their own brands" ON brands;
 CREATE POLICY "Users can only see their own brands" ON brands FOR ALL USING (auth.uid() = user_id);
 
 -- ── 4. RETENTION PLAN (Optional) ──

@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_sale ON payments(sale_id);
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             product_id UUID REFERENCES products(id) ON DELETE CASCADE,
             warehouse_id UUID, -- Optional for now
-            change_amount INTEGER NOT NULL,
+            change_quantity INTEGER NOT NULL,
             reason TEXT,
             user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
             created_at TIMESTAMPTZ DEFAULT now()
