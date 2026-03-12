@@ -1,136 +1,150 @@
 import streamlit as st
-import pandas as pd
-import time
+from nexus_commerce.inventory import logic as inv_logic
+from nexus_commerce.customers import logic as cust_logic
 from nexus_commerce.sales import logic as sales_logic
-from nexus_commerce.inventory import logic as inventory_logic
+from nexus_commerce.common._utils import inject_custom_css, render_sidebar, page_header, kpi_card, render_notification
 
-# --- Page Configuration and Authentication ---
-st.set_page_config(page_title="Sales Terminal", layout="wide", page_icon="🛒")
-
-# This is a critical security measure to protect the page.
+# ── Page Config ──
+st.set_page_config(page_title="Sales Terminal | Nexus Commerce", layout="wide", page_icon="🛒")
 if not st.session_state.get("authenticated"):
-    st.error("🔒 You must be logged in to view this page. Please go to the main page to log in.")
-    st.stop()
+    st.error("🔒 You must be logged in."); st.stop()
 
-# --- Sidebar ---
-st.sidebar.title(f"Welcome, {st.session_state.user_email}")
-st.sidebar.divider()
-if st.sidebar.button("Logout", key="sales_logout", use_container_width=True):
-    st.session_state.authenticated = False
-    st.session_state.user_email = ""
-    st.switch_page("app.py")
+inject_custom_css()
+render_sidebar()
 
-st.title("🛒 Sales Terminal")
+render_notification()
 
-# --- Session State Initialization ---
-# This is crucial for Streamlit apps. It creates a "memory" for the cart
-# and payments that persists between user interactions (reruns).
-if 'cart_items' not in st.session_state:
-    st.session_state.cart_items = []
-if 'payments' not in st.session_state:
-    st.session_state.payments = []
+page_header("Sales Terminal", "Point-of-Sale — Add items to cart and process transactions", "🛒")
 
-# --- Layout with Columns for a clean Point-of-Sale feel ---
-col1, col2 = st.columns([1.5, 2])
+# ── Session State for Cart ──
+if "cart" not in st.session_state:
+    st.session_state.cart = []
 
-# --- COLUMN 1: Adding Items and Payments ---
-with col1:
-    # Container for adding items
-    with st.container(border=True):
-        st.subheader("1. Add Items to Sale")
-        with st.form("add_item_form"):
-            sku_to_add = st.text_input("Product SKU")
-            quantity_to_add = st.number_input("Quantity", min_value=1, step=1)
-            add_item_submitted = st.form_submit_button("Add Item", use_container_width=True)
+# ── Load Products ──
+products = inv_logic.get_all_products()
+product_list = products if isinstance(products, list) else []
 
-            if add_item_submitted and sku_to_add:
-                product = inventory_logic.find_product_by_sku(sku_to_add)
-                if isinstance(product, dict):
-                    # Add found product to our session state list
-                    st.session_state.cart_items.append({
-                        "sku": sku_to_add.upper(), "name": product['name'],
-                        "quantity": quantity_to_add, "price": product['selling_price']
-                    })
-                    # st.rerun() immediately refreshes the page to show the updated cart
-                    st.rerun()
-                else:
-                    st.error(f"Product with SKU '{sku_to_add}' not found.", icon="🚨")
-    
-    # Container for adding payments
-    with st.container(border=True):
-        st.subheader("2. Add Payments")
-        with st.form("add_payment_form"):
-            payment_method = st.selectbox("Payment Method", ["Cash", "UPI", "Card"])
-            payment_amount = st.number_input("Amount (Rs)", min_value=0.01, format="%.2f")
-            add_payment_submitted = st.form_submit_button("Add Payment", use_container_width=True)
+# ── Two Column Layout ──
+col_left, col_right = st.columns([3, 2])
 
-            if add_payment_submitted and payment_amount > 0:
-                st.session_state.payments.append({"method": payment_method, "amount": payment_amount})
-                st.rerun()
+# ── LEFT: Add to Cart ──
+with col_left:
+    st.markdown('<div class="section-header">🛍️ Add Items</div>', unsafe_allow_html=True)
 
-# --- COLUMN 2: Sale Summary and Finalization ---
-with col2:
-    with st.container(border=True):
-        st.subheader("Current Sale Summary")
-        if not st.session_state.cart_items:
-            st.info("Cart is empty. Add items to begin a sale.", icon="🛒")
+    if not product_list:
+        st.info("No products in inventory. Add products first.", icon="📦")
+    else:
+        available = [p for p in product_list if p['quantity_on_hand'] > 0]
+        if not available:
+            st.warning("All products are out of stock.", icon="⚠️")
         else:
-            # --- Display Cart Items ---
-            cart_df = pd.DataFrame(st.session_state.cart_items)
-            cart_df['Subtotal'] = cart_df['quantity'] * cart_df['price']
-            st.write("**Items in Cart:**")
-            st.dataframe(cart_df[['name', 'sku', 'quantity', 'price', 'Subtotal']], use_container_width=True, hide_index=True)
-            sale_total = cart_df['Subtotal'].sum()
-            
-            # --- Display Payments ---
-            payments_df = pd.DataFrame(st.session_state.payments)
-            paid_total = payments_df['amount'].sum() if not payments_df.empty else 0
-            
-            # --- Display KPIs ---
-            mcol1, mcol2, mcol3 = st.columns(3)
-            mcol1.metric("Sale Total", f"Rs. {sale_total:.2f}")
-            mcol2.metric("Total Paid", f"Rs. {paid_total:.2f}")
-            
-            # --- Calculate and Display Balance ---
-            balance_due = sale_total - paid_total
-            if balance_due > 0.01:
-                mcol3.metric("Balance Due", f"Rs. {balance_due:.2f}", delta_color="inverse")
-            elif balance_due < -0.01:
-                mcol3.metric("Change Due", f"Rs. {-balance_due:.2f}", delta_color="normal")
-            else:
-                mcol3.metric("Balance", "Paid in Full", delta_color="off")
-            
+            with st.form("add_to_cart_form"):
+                product_options = {f"{p['name']} ({p['sku']}) — ₹{p['selling_price']:,.2f} — Stock: {p['quantity_on_hand']}": p['sku'] for p in available}
+                selected_label = st.selectbox("Select Product", list(product_options.keys()))
+                selected_sku = product_options[selected_label]
+                selected_product = next(p for p in available if p['sku'] == selected_sku)
+
+                qty = st.number_input("Quantity", min_value=1, max_value=selected_product['quantity_on_hand'], value=1, step=1)
+                add_submitted = st.form_submit_button("🛒 Add to Cart", use_container_width=True, type="primary")
+
+                if add_submitted:
+                    # Check if already in cart
+                    existing = next((item for item in st.session_state.cart if item['sku'] == selected_sku), None)
+                    if existing:
+                        max_qty = selected_product['quantity_on_hand']
+                        if existing['quantity'] + qty > max_qty:
+                            st.error(f"Cannot add more. Cart already has {existing['quantity']}, available: {max_qty}.", icon="🚨")
+                        else:
+                            existing['quantity'] += qty
+                            st.session_state.toast_msg = f"Updated: {selected_product['name']} × {existing['quantity']}"
+                            st.rerun()
+                    else:
+                        st.session_state.cart.append({
+                            'sku': selected_sku,
+                            'name': selected_product['name'],
+                            'price': selected_product['selling_price'],
+                            'quantity': qty
+                        })
+                        st.session_state.toast_msg = f"Added: {selected_product['name']} × {qty}"
+                        st.rerun()
+
+    # ── Customer (Optional) ──
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="section-header">👤 Customer (Optional)</div>', unsafe_allow_html=True)
+    customers = cust_logic.get_all_customers()
+    customer_list = customers if isinstance(customers, list) else []
+    if customer_list:
+        customer_options = {"No Customer (Walk-in)": ""} | {f"{c['name']} ({c['phone']})": c['phone'] for c in customer_list}
+        selected_customer = st.selectbox("Link to Customer", list(customer_options.keys()))
+        customer_phone = customer_options[selected_customer]
+    else:
+        customer_phone = ""
+        st.caption("No customers registered. Sales will be recorded as walk-in.")
+
+# ── RIGHT: Cart & Payment ──
+with col_right:
+    st.markdown('<div class="section-header">🧾 Cart Summary</div>', unsafe_allow_html=True)
+
+    if not st.session_state.cart:
+        st.markdown("""
+        <div class="empty-state">
+            <div class="empty-icon">🛒</div>
+            <div class="empty-title">Cart is Empty</div>
+            <div class="empty-desc">Add products from the left panel to start a sale.</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        total = 0
+        for i, item in enumerate(st.session_state.cart):
+            line_total = item['price'] * item['quantity']
+            total += line_total
+
+            ic1, ic2, ic3 = st.columns([5, 2, 1])
+            with ic1:
+                st.markdown(f"**{item['name']}** `{item['sku']}`")
+                st.caption(f"₹{item['price']:,.2f} × {item['quantity']} = ₹{line_total:,.2f}")
+            with ic3:
+                if st.button("✕", key=f"rm_{i}", help="Remove from cart"):
+                    st.session_state.cart.pop(i)
+                    st.rerun()
             st.divider()
-            st.subheader("3. Finalize Sale")
-            customer_phone = st.text_input("Customer Phone (Optional)", placeholder="Search by phone number to link sale")
-            
-            # --- Action Buttons ---
-            fcol1, fcol2 = st.columns(2)
-            if fcol1.button("✅ Complete Sale", use_container_width=True, type="primary"):
-                items_for_logic = [{"sku": item['sku'], "quantity": item['quantity']} for item in st.session_state.cart_items]
-                
-                with st.spinner("Processing sale..."):
-                    # Call the backend logic function to process the sale
-                    result = sales_logic.record_sale(items_for_logic, st.session_state.payments, customer_phone.strip() or None)
-                
+
+        # Total KPIs
+        t1, t2 = st.columns(2)
+        with t1: st.markdown(kpi_card("Items", str(len(st.session_state.cart)), "📦", "blue"), unsafe_allow_html=True)
+        with t2: st.markdown(kpi_card("Total", f"₹{total:,.2f}", "💰", "green"), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Payment ──
+        st.markdown('<div class="section-header">💳 Payment</div>', unsafe_allow_html=True)
+
+        with st.form("payment_form"):
+            method = st.selectbox("Payment Method", ["Cash", "Card", "UPI", "Bank Transfer"])
+            amount = st.number_input(f"Amount (₹)", value=float(total), min_value=0.0, format="%.2f")
+
+            p1, p2 = st.columns(2)
+            with p1: complete = st.form_submit_button("✅ Complete Sale", use_container_width=True, type="primary")
+            with p2: cancel = st.form_submit_button("❌ Cancel", use_container_width=True)
+
+            if complete:
+                items = [{"sku": item['sku'], "quantity": item['quantity']} for item in st.session_state.cart]
+                payments = [{"method": method, "amount": amount}]
+
+                with st.spinner("Processing transaction…"):
+                    result = sales_logic.record_sale(items, payments, customer_phone or None)
+
                 if result['success']:
-                    st.success(result['message'], icon="🎉")
-                    if result['alerts']:
-                        for alert in result['alerts']:
-                            st.warning(alert, icon="⚠️")
-                    # Clear state for the next sale and celebrate!
-                    st.session_state.cart_items = []
-                    st.session_state.payments = []
+                    st.session_state.toast_msg = result['message']
+                    for alert in result.get('alerts', []):
+                        st.warning(alert, icon="⚠️")
+                    st.session_state.cart = []
                     st.balloons()
-                    time.sleep(2) # Give time for balloons to show
                     st.rerun()
                 else:
                     st.error(result['message'], icon="🚨")
-            
-            if fcol2.button("❌ Cancel Sale", use_container_width=True):
-                st.session_state.cart_items = []
-                st.session_state.payments = []
-                st.info("Sale cancelled and cart cleared.", icon="🗑️")
-                time.sleep(1)
-                st.rerun()
 
+            if cancel:
+                st.session_state.cart = []
+                st.info("Cart cleared.", icon="🗑️")
+                st.rerun()

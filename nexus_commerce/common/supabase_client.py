@@ -1,49 +1,59 @@
+"""
+Nexus Commerce Suite — Supabase Client
+========================================
+Singleton pattern for the Supabase client with logging and connection validation.
+"""
 import os
+import logging
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# --- Global variable to hold the single, shared client instance ---
-# We use a leading underscore to indicate it's for internal use within this module.
+logger = logging.getLogger("nexus_commerce.supabase")
+
+# ── Global singleton ──
 _supabase_client: Client = None
 
-def get_supabase_client():
+
+def get_supabase_client() -> Client:
     """
     Creates and returns the Supabase client instance.
-    Uses a singleton pattern to ensure only one client is created per session.
-    This is the only function that other modules should import.
+    Uses singleton pattern — only one client per process.
     """
     global _supabase_client
 
-    # If the client has not been created yet, this block will run.
     if _supabase_client is None:
-        # Load environment variables from the .env file or Streamlit secrets
         load_dotenv()
-        url: str = os.environ.get("SUPABASE_URL")
-        key: str = os.environ.get("SUPABASE_KEY")
+        url: str = os.environ.get("SUPABASE_URL", "").strip()
+        key: str = os.environ.get("SUPABASE_KEY", "").strip()
 
-        # A robust check for credentials
-        if not url or not key:
-            raise ValueError("FATAL ERROR: SUPABASE_URL and SUPABASE_KEY must be set in your .env file or Streamlit secrets.")
+        if not url or not key or url.startswith("your_"):
+            raise ValueError(
+                "SUPABASE_URL and SUPABASE_KEY must be set in your .env file. "
+                "Get these from: Supabase Dashboard → Project Settings → API"
+            )
 
         try:
-            # Create the client and store it in the global variable for reuse.
+            logger.info("Initializing Supabase client for %s", url[:40] + "…")
             _supabase_client = create_client(url, key)
+            logger.info("Supabase client initialized successfully.")
         except Exception as e:
-            raise ConnectionError(f"Could not create Supabase client. Please check your credentials. Details: {e}")
-    
-    # Return the existing client instance.
+            logger.error("Failed to create Supabase client: %s", e)
+            raise ConnectionError(
+                f"Could not connect to Supabase. "
+                f"Verify your credentials in .env are correct. Details: {e}"
+            )
+
     return _supabase_client
 
-def check_connection():
+
+def check_connection() -> bool:
     """
-    A simple function to be called on startup to explicitly verify credentials
-    and provide a clear error message to the user if they are invalid.
+    Verify credentials on startup. Raises ValueError or ConnectionError
+    if the connection cannot be established.
     """
     try:
-        # Attempt to get the client, which will trigger initialization if needed.
         get_supabase_client()
         return True
     except (ValueError, ConnectionError) as e:
-        # If an error occurs, re-raise it to be caught by the main app page.
-        raise e
-
+        logger.critical("Database connection check FAILED: %s", e)
+        raise

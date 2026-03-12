@@ -1,107 +1,190 @@
 import streamlit as st
 import pandas as pd
-from nexus_commerce.customers import logic
+from nexus_commerce.customers import logic as cust_logic
+from nexus_commerce.common._utils import inject_custom_css, render_sidebar, page_header, kpi_card, render_notification
 
-# --- Page Configuration and Authentication ---
-# This sets the title that appears in the browser tab and configures the layout.
-st.set_page_config(page_title="Customer Management", layout="wide", page_icon="👥")
-
-# This is a critical security measure. It checks if the user is logged in
-# by looking at the session state. If not, it stops the page from loading.
+# ── Page Config ──
+st.set_page_config(page_title="Customers | Nexus Commerce", layout="wide", page_icon="👥")
 if not st.session_state.get("authenticated"):
-    st.error("🔒 You must be logged in to view this page. Please go to the main page to log in.")
-    st.stop()
+    st.error("🔒 You must be logged in."); st.stop()
 
-# --- Sidebar ---
-# This creates a consistent sidebar for a professional look and feel.
-st.sidebar.title(f"Welcome, {st.session_state.user_email}")
-st.sidebar.divider()
-if st.sidebar.button("Logout", key="customer_logout", use_container_width=True):
-    # When logout is clicked, it clears the session state and redirects to the login page.
-    st.session_state.authenticated = False
-    st.session_state.user_email = ""
-    st.switch_page("app.py")
+inject_custom_css()
+render_sidebar()
 
-st.title("👥 Customer Management (CRM)")
+render_notification()
 
-# --- UI organized into tabs for different CRM actions ---
-tab1, tab2, tab3 = st.tabs(["**View All Customers**", "**Add New Customer**", "**View Customer History**"])
+page_header("Customer Management", "Complete CRM — Add, View, Update, Delete & Analyze Customers", "👥")
 
-# --- TAB 1: VIEW ALL CUSTOMERS ---
-with tab1:
-    st.header("Customer List")
-    customers = logic.get_all_customers()
-    if isinstance(customers, list):
-        if not customers:
-            st.info("No customers found. Add one in the next tab!", icon="➕")
-        else:
-            df = pd.DataFrame(customers)
-            # Select and reorder columns for a clean presentation.
-            df_display = df[['name', 'phone', 'email', 'created_at']]
-            df_display.rename(columns={'name': 'Name', 'phone': 'Phone', 'email': 'Email', 'created_at': 'Date Added'}, inplace=True)
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+# ── Load Data ──
+customers = cust_logic.get_all_customers()
+customer_list = customers if isinstance(customers, list) else []
+
+# ── KPIs ──
+total = len(customer_list)
+with_email = sum(1 for c in customer_list if c.get('email'))
+c1, c2, c3 = st.columns(3)
+with c1: st.markdown(kpi_card("Total Customers", str(total), "👥", "purple"), unsafe_allow_html=True)
+with c2: st.markdown(kpi_card("With Email", str(with_email), "📧", "blue"), unsafe_allow_html=True)
+with c3: st.markdown(kpi_card("Without Email", str(total - with_email), "❓", "amber"), unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+tab_view, tab_add, tab_search, tab_update, tab_delete = st.tabs([
+    "📋 **View All**",
+    "➕ **Add Customer**",
+    "🔍 **Search & History**",
+    "✏️ **Update Customer**",
+    "🗑️ **Delete Customer**"
+])
+
+# ── VIEW ALL ──
+with tab_view:
+    if not customer_list:
+        st.markdown("""
+        <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <div class="empty-title">No Customers Yet</div>
+            <div class="empty-desc">Add your first customer using the "Add Customer" tab.</div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        # Handles the case where the logic function returns an error string.
-        st.error(customers, icon="🚨")
+        search = st.text_input("🔍 Search by name or phone…", key="cust_search", placeholder="e.g. John, 9876543210")
+        filtered = [c for c in customer_list if search.lower() in c.get('name', '').lower() or search in c.get('phone', '')] if search else customer_list
 
-# --- TAB 2: ADD NEW CUSTOMER ---
-with tab2:
-    st.header("Add a New Customer")
-    # Using a form prevents the page from rerunning on every input change.
-    with st.form("add_customer_form", clear_on_submit=True, border=True):
-        name = st.text_input("Customer Name*")
-        phone = st.text_input("Customer Phone Number*")
-        email = st.text_input("Customer Email (Optional)")
+        st.caption(f"Showing {len(filtered)} of {total} customers")
 
-        submitted = st.form_submit_button("Add Customer", use_container_width=True, type="primary")
+        df = pd.DataFrame(filtered)
+        if not df.empty:
+            display_df = df[['name', 'phone', 'email']].copy()
+            display_df.columns = ['Name', 'Phone', 'Email']
+            display_df['Email'] = display_df['Email'].fillna('—')
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            csv = display_df.to_csv(index=False)
+            st.download_button("📥 Export Customers CSV", csv, "nexus_customers.csv", "text/csv", use_container_width=True)
+
+# ── ADD CUSTOMER ──
+with tab_add:
+    st.markdown('<div class="section-header">Add New Customer</div>', unsafe_allow_html=True)
+    with st.form("add_customer_form"):
+        name = st.text_input("Full Name", placeholder="e.g. Priya Sharma")
+        phone = st.text_input("Phone Number", placeholder="e.g. 9876543210")
+        email = st.text_input("Email (Optional)", placeholder="e.g. priya@company.com")
+        submitted = st.form_submit_button("➕ Add Customer", use_container_width=True, type="primary")
+
         if submitted:
-            if not all([name, phone]):
-                st.error("Name and Phone are required.", icon="🚨")
+            if not name or not phone:
+                st.error("Name and phone are required.", icon="🚨")
             else:
-                with st.spinner("Adding customer..."):
-                    result = logic.add_customer(name, phone, email)
-                if "Success" in result:
-                    st.success(result, icon="✅")
+                result = cust_logic.add_customer(name, phone, email)
+                if result.startswith("Success"):
+                    st.session_state.toast_msg = result
+                    st.rerun()
                 else:
                     st.error(result, icon="🚨")
 
-# --- TAB 3: VIEW CUSTOMER HISTORY ---
-with tab3:
-    st.header("View Customer Purchase History")
-    phone_to_find = st.text_input("Enter customer phone number to find history", key="find_phone")
-    
-    if st.button("Find History", use_container_width=True) and phone_to_find:
-        with st.spinner(f"Searching for history of {phone_to_find}..."):
-            customer = logic.find_customer_by_phone(phone_to_find)
-        
-        if isinstance(customer, str): # Error message returned from logic
-            st.error(customer, icon="🚨")
-        elif customer is None:
-            st.warning(f"No customer found with phone '{phone_to_find}'.", icon="⚠️")
-        else:
-            st.subheader(f"Purchase History for: {customer['name']} ({customer['phone']})")
-            
-            if not customer.get('sales'):
-                st.info("This customer has no purchase history.", icon="ℹ️")
-            else:
-                # Sort sales by date, most recent first, for a better user experience.
-                for sale in sorted(customer['sales'], key=lambda s: s['sale_date'], reverse=True):
-                    # st.expander creates a clean, collapsible view for each sale.
-                    with st.expander(f"**Sale on {sale['sale_date']}** | Total: Rs. {sale['total_amount']:.2f}"):
-                        if not sale.get('items'):
-                            st.write("No item details found for this sale.")
-                        else:
-                            # Prepare data for a clean table display inside the expander.
-                            items_data = []
-                            for item in sale['items']:
-                                # Safely access nested product info to prevent errors.
-                                product_info = item.get('products', {})
-                                items_data.append({
-                                    "Product Name": product_info.get('name', 'N/A'),
-                                    "SKU": product_info.get('sku', 'N/A'),
-                                    "Quantity": item['quantity'],
-                                    "Price per Unit": item['price_per_unit']
-                                })
-                            items_df = pd.DataFrame(items_data)
-                            st.dataframe(items_df, use_container_width=True, hide_index=True)
+# ── SEARCH & HISTORY ──
+with tab_search:
+    st.markdown('<div class="section-header">Customer Lookup</div>', unsafe_allow_html=True)
+    lookup_phone = st.text_input("Enter Phone Number", key="lookup_phone", placeholder="e.g. 9876543210")
 
+    if st.button("🔍 Search", use_container_width=True, type="primary"):
+        if not lookup_phone:
+            st.error("Please enter a phone number.", icon="🚨")
+        else:
+            with st.spinner("Looking up customer…"):
+                result = cust_logic.find_customer_by_phone(lookup_phone)
+
+            if result is None:
+                st.warning(f"No customer found with phone: {lookup_phone}", icon="⚠️")
+            elif isinstance(result, str):
+                st.error(result, icon="🚨")
+            else:
+                # Customer profile card
+                total_spent = sum(s.get('total_amount', 0) for s in result.get('sales', []))
+                num_purchases = len(result.get('sales', []))
+
+                pc1, pc2, pc3 = st.columns(3)
+                with pc1: st.markdown(kpi_card("Customer", result['name'], "👤", "purple"), unsafe_allow_html=True)
+                with pc2: st.markdown(kpi_card("Total Spent", f"₹{total_spent:,.0f}", "💰", "green"), unsafe_allow_html=True)
+                with pc3: st.markdown(kpi_card("Purchases", str(num_purchases), "🛒", "blue"), unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # Contact info
+                st.markdown(f"📞 **Phone:** {result['phone']} &nbsp;&nbsp; 📧 **Email:** {result.get('email') or '—'}")
+
+                # Purchase history
+                if result.get('sales'):
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown('<div class="section-header">Purchase History</div>', unsafe_allow_html=True)
+                    for s in result['sales']:
+                        sale_date = s.get('sale_date', 'N/A')[:10]
+                        with st.expander(f"🧾 Sale on {sale_date} — ₹{s['total_amount']:,.2f}"):
+                            if s.get('items'):
+                                for item in s['items']:
+                                    product = item.get('products', {})
+                                    st.markdown(f"• **{product.get('name', 'Unknown')}** ({product.get('sku', 'N/A')}) — {item['quantity']} × ₹{item['price_per_unit']:,.2f}")
+                            else:
+                                st.caption("No item details available.")
+                else:
+                    st.info("No purchase history yet.", icon="📋")
+
+# ── UPDATE CUSTOMER ──
+with tab_update:
+    st.markdown('<div class="section-header">Update Customer</div>', unsafe_allow_html=True)
+    with st.form("update_customer_form"):
+        if customer_list:
+            cust_options = {f"{c['name']} ({c['phone']})": c['phone'] for c in customer_list}
+            selected = st.selectbox("Select Customer", list(cust_options.keys()))
+            selected_phone = cust_options[selected]
+            current = next((c for c in customer_list if c['phone'] == selected_phone), None)
+
+            if current:
+                st.info(f"Editing: **{current['name']}** — {current['phone']}", icon="✏️")
+                new_name = st.text_input("New Name", value=current['name'], key="uc_name")
+                new_phone = st.text_input("New Phone", value=current['phone'], key="uc_phone")
+                new_email = st.text_input("New Email", value=current.get('email') or '', key="uc_email")
+                submitted = st.form_submit_button("✏️ Update Customer", use_container_width=True, type="primary")
+
+                if submitted:
+                    updates = {"name": new_name.strip(), "phone": new_phone.strip(), "email": new_email.strip() or None}
+                    result = cust_logic.update_customer(selected_phone, updates)
+                    if result.startswith("Success"):
+                        st.session_state.toast_msg = result
+                        st.rerun()
+                    else:
+                        st.error(result, icon="🚨")
+        else:
+            st.info("No customers available to update.", icon="👥")
+            st.form_submit_button("Update", disabled=True)
+
+# ── DELETE CUSTOMER ──
+with tab_delete:
+    st.markdown('<div class="section-header">Delete Customer</div>', unsafe_allow_html=True)
+    st.warning("⚠️ **Caution**: Deleting a customer is permanent. Their sales records will remain but will no longer be linked.", icon="⚠️")
+
+    with st.form("delete_customer_form"):
+        if customer_list:
+            cust_options = {f"{c['name']} ({c['phone']})": c['phone'] for c in customer_list}
+            selected = st.selectbox("Select Customer to Delete", list(cust_options.keys()), key="dc_select")
+            selected_phone = cust_options[selected]
+            current = next((c for c in customer_list if c['phone'] == selected_phone), None)
+            if current:
+                st.error(f"You are about to delete: **{current['name']}** ({current['phone']})", icon="🗑️")
+            confirm = st.text_input("Type the phone number to confirm", key="dc_confirm", placeholder=f"Type '{selected_phone}' to confirm")
+            submitted = st.form_submit_button("🗑️ Delete Customer Permanently", use_container_width=True, type="primary")
+
+            if submitted:
+                if confirm.strip() != selected_phone:
+                    st.error(f"Phone confirmation does not match. Expected: {selected_phone}", icon="🚨")
+                else:
+                    result = cust_logic.delete_customer_by_phone(selected_phone)
+                    if result.startswith("Success"):
+                        st.session_state.toast_msg = result
+                        st.rerun()
+                    else:
+                        st.error(result, icon="🚨")
+        else:
+            st.info("No customers available to delete.", icon="👥")
+            st.form_submit_button("Delete", disabled=True)

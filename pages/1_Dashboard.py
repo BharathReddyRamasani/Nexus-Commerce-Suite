@@ -1,104 +1,147 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from datetime import datetime
 from nexus_commerce.inventory import logic as inventory_logic
 from nexus_commerce.customers import logic as customer_logic
 from nexus_commerce.reports import logic as report_logic
+from nexus_commerce.common._utils import inject_custom_css, render_sidebar, page_header, kpi_card
 
-# --- Page Configuration and Authentication ---
-st.set_page_config(page_title="Dashboard", layout="wide", page_icon="📊")
-
-# This is a critical security measure. It checks if the user is logged in
-# by looking at the session state. If not, it stops the page from loading.
+# ── Page Config ──
+st.set_page_config(page_title="Dashboard | Nexus Commerce", layout="wide", page_icon="📊")
 if not st.session_state.get("authenticated"):
-    st.error("🔒 You must be logged in to view this page. Please go to the main page to log in.")
-    st.stop()
+    st.error("🔒 You must be logged in."); st.stop()
 
-# --- Sidebar ---
-# This creates a consistent sidebar for a professional look and feel.
-st.sidebar.title(f"Welcome, {st.session_state.user_email}")
-st.sidebar.divider()
-if st.sidebar.button("Logout", key="dashboard_logout", use_container_width=True):
-    # When logout is clicked, it clears the session state and redirects to the login page.
-    st.session_state.authenticated = False
-    st.session_state.user_email = ""
-    st.switch_page("app.py")
+inject_custom_css()
+render_sidebar()
 
-# --- Main Page Content ---
-st.title("📊 Business Dashboard")
-st.markdown(f"An overview of your business operations as of {datetime.now().strftime('%d %b %Y, %I:%M %p')}")
+page_header("Executive Dashboard", f"Real-time business intelligence — {datetime.now().strftime('%d %b %Y, %I:%M %p')}", "📊")
 
-# --- Key Performance Indicator (KPI) Metrics ---
-st.divider()
-col1, col2, col3 = st.columns(3)
-
-# Using a spinner provides a better user experience while data is being fetched.
-with st.spinner("Loading key metrics..."):
-    # Fetch data from all relevant logic modules.
+# ── KPIs ──
+with st.spinner("Loading metrics…"):
     products = inventory_logic.get_all_products()
     customers = customer_logic.get_all_customers()
-    daily_report = report_logic.get_profit_report('daily')
+    daily = report_logic.get_profit_report('daily')
+    weekly = report_logic.get_profit_report('weekly')
+    inv_summary = inventory_logic.get_inventory_summary()
 
-    # Safely calculate metrics, handling potential errors from the logic layer.
-    total_products = len(products) if isinstance(products, list) else 0
-    total_customers = len(customers) if isinstance(customers, list) else 0
-    daily_revenue = daily_report.get('total_revenue', 0)
+    tp = len(products) if isinstance(products, list) else 0
+    tc = len(customers) if isinstance(customers, list) else 0
+    dr = daily.get('total_revenue', 0)
+    dp = daily.get('total_profit', 0)
+    wr = weekly.get('total_revenue', 0)
 
-    # Display the KPIs in styled metric boxes.
-    col1.metric("Total Products", f"{total_products}", help="The total number of unique products in your inventory.")
-    col2.metric("Total Customers", f"{total_customers}", help="The total number of customers registered in the system.")
-    col3.metric("Revenue (Last 24h)", f"Rs. {daily_revenue:.2f}", help="Total sales revenue generated in the last 24 hours.")
+c1, c2, c3, c4, c5 = st.columns(5)
+with c1: st.markdown(kpi_card("Total Products", str(tp), "📦", "blue"), unsafe_allow_html=True)
+with c2: st.markdown(kpi_card("Total Customers", str(tc), "👥", "purple"), unsafe_allow_html=True)
+with c3: st.markdown(kpi_card("Revenue (24h)", f"₹{dr:,.0f}", "💰", "green"), unsafe_allow_html=True)
+with c4: st.markdown(kpi_card("Profit (24h)", f"₹{dp:,.0f}", "📈", "amber"), unsafe_allow_html=True)
+with c5: st.markdown(kpi_card("Revenue (7d)", f"₹{wr:,.0f}", "💎", "purple"), unsafe_allow_html=True)
 
-# --- Interactive Sales Trend Chart ---
-st.divider()
-st.subheader("Sales Trend Analysis")
+# ── Inventory Value ──
+st.markdown("<br>", unsafe_allow_html=True)
+if not inv_summary.get("error"):
+    iv1, iv2, iv3 = st.columns(3)
+    with iv1: st.markdown(kpi_card("Stock Value (Cost)", f"₹{inv_summary['total_cost_value']:,.0f}", "🏷️", "blue"), unsafe_allow_html=True)
+    with iv2: st.markdown(kpi_card("Stock Value (Retail)", f"₹{inv_summary['total_sell_value']:,.0f}", "💳", "green"), unsafe_allow_html=True)
+    with iv3: st.markdown(kpi_card("Potential Profit", f"₹{inv_summary['potential_profit']:,.0f}", "🎯", "amber"), unsafe_allow_html=True)
 
-# This interactive selectbox allows the user to control the chart's time window.
-time_window = st.selectbox(
-    "Select Time Window",
-    (7, 30, 90),
-    format_func=lambda x: f"Last {x} Days",
-    index=1  # Default to 30 days
-)
+# ── Sales Trend ──
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown('<div class="section-header">📈 Sales Trend Analysis</div>', unsafe_allow_html=True)
 
-with st.spinner(f"Loading sales data for the last {time_window} days..."):
+time_window = st.selectbox("Time Window", (7, 30, 90), format_func=lambda x: f"Last {x} Days", index=1)
+
+with st.spinner("Loading chart…"):
     sales_response = report_logic.get_sales_over_time(time_window)
-    
     if "error" in sales_response:
         st.error(sales_response['error'], icon="🚨")
     else:
         sales_data = sales_response.get("data", [])
         if not sales_data:
-            st.info(f"No sales data available for the last {time_window} days to display a chart.")
+            st.info(f"No sales data for the last {time_window} days.", icon="📊")
         else:
-            # Use Pandas to process the data for charting.
             df = pd.DataFrame(sales_data)
             df['sale_date'] = pd.to_datetime(df['sale_date']).dt.date
-            # Group by date and sum the amounts to get daily sales totals.
-            daily_sales = df.groupby('sale_date')['total_amount'].sum()
-            
-            # Calculate additional KPIs for the selected period.
-            total_period_revenue = daily_sales.sum()
-            best_day_revenue = daily_sales.max()
-            best_day_date = daily_sales.idxmax().strftime('%d %b %Y') if not daily_sales.empty else "N/A"
-            
-            kpi_col1, kpi_col2 = st.columns(2)
-            kpi_col1.metric(f"Total Revenue (Last {time_window} Days)", f"Rs. {total_period_revenue:.2f}")
-            kpi_col2.metric(f"Best Sales Day", f"Rs. {best_day_revenue:.2f}", help=f"On {best_day_date}")
-            
-            # Use an Area Chart for a more professional and attractive visual.
-            st.area_chart(daily_sales)
+            daily_sales = df.groupby('sale_date')['total_amount'].sum().reset_index()
+            daily_sales.columns = ['Date', 'Revenue']
 
-# --- Quick Actions Section ---
-st.divider()
-st.subheader("Quick Actions")
-qcol1, qcol2, qcol3 = st.columns(3)
+            tr = daily_sales['Revenue'].sum()
+            best = daily_sales['Revenue'].max()
+            best_d = daily_sales.loc[daily_sales['Revenue'].idxmax(), 'Date'].strftime('%d %b') if not daily_sales.empty else "N/A"
+            avg_daily = daily_sales['Revenue'].mean()
 
-# These buttons allow for quick navigation to the most frequently used pages.
-if qcol1.button("➕ Add New Product", use_container_width=True):
-    st.switch_page("pages/2_Inventory_Management.py")
-if qcol2.button("🛒 Record a New Sale", use_container_width=True):
-    st.switch_page("pages/3_Record_Sale.py")
-if qcol3.button("👥 Add New Customer", use_container_width=True):
-    st.switch_page("pages/4_Customer_Management.py")
+            m1, m2, m3 = st.columns(3)
+            with m1: st.markdown(kpi_card(f"Period Revenue", f"₹{tr:,.0f}", "💎", "green"), unsafe_allow_html=True)
+            with m2: st.markdown(kpi_card(f"Best Day ({best_d})", f"₹{best:,.0f}", "🏆", "amber"), unsafe_allow_html=True)
+            with m3: st.markdown(kpi_card(f"Avg Daily", f"₹{avg_daily:,.0f}", "📊", "blue"), unsafe_allow_html=True)
 
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=daily_sales['Date'], y=daily_sales['Revenue'],
+                fill='tozeroy', fillcolor='rgba(99, 102, 241, 0.12)',
+                line=dict(color='#6366f1', width=2.5, shape='spline'),
+                mode='lines+markers',
+                marker=dict(size=5, color='#8b5cf6', line=dict(width=1, color='#a78bfa')),
+                name='Revenue',
+                hovertemplate='<b>%{x|%d %b %Y}</b><br>₹%{y:,.2f}<extra></extra>'
+            ))
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family='Inter', color='rgba(226,232,240,0.6)', size=11),
+                xaxis=dict(gridcolor='rgba(99,102,241,0.06)', showline=False, title=None),
+                yaxis=dict(gridcolor='rgba(99,102,241,0.06)', showline=False, title="Revenue (₹)", title_font_size=11),
+                margin=dict(l=10, r=10, t=10, b=10), height=320, hovermode='x unified'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+# ── Top Products ──
+if isinstance(products, list) and products:
+    st.markdown('<div class="section-header">🏅 Top Products by Selling Price</div>', unsafe_allow_html=True)
+    pdf = pd.DataFrame(products).nlargest(5, 'selling_price')
+    fig2 = go.Figure(go.Bar(
+        y=pdf['name'], x=pdf['selling_price'],
+        orientation='h',
+        marker=dict(
+            color=pdf['selling_price'],
+            colorscale=[[0, '#6366f1'], [1, '#a78bfa']],
+            line=dict(width=0)
+        ),
+        text=[f"₹{p:,.0f}" for p in pdf['selling_price']],
+        textposition='outside', textfont=dict(size=11, color='rgba(226,232,240,0.7)'),
+        hovertemplate='<b>%{y}</b><br>₹%{x:,.2f}<extra></extra>'
+    ))
+    fig2.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(family='Inter', color='rgba(226,232,240,0.6)', size=11),
+        xaxis=dict(gridcolor='rgba(99,102,241,0.06)', showline=False, title=None),
+        yaxis=dict(showline=False, title=None, autorange='reversed'),
+        margin=dict(l=10, r=60, t=10, b=10), height=220
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+# ── Quick Actions ──
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown('<div class="section-header">⚡ Quick Actions</div>', unsafe_allow_html=True)
+
+q1, q2, q3, q4, q5 = st.columns(5)
+actions = [
+    (q1, "📦", "Inventory", "Manage stock", "pages/2_Inventory_Management.py"),
+    (q2, "🛒", "New Sale", "POS terminal", "pages/3_Record_Sale.py"),
+    (q3, "👥", "Customers", "CRM portal", "pages/4_Customer_Management.py"),
+    (q4, "📊", "Reports", "BI insights", "pages/5_Reports.py"),
+    (q5, "🔬", "Analytics", "Data science", "pages/6_Analytics.py"),
+]
+for col, icon, title, desc, page in actions:
+    with col:
+        st.markdown(f"""
+        <div class="action-card">
+            <div class="action-icon">{icon}</div>
+            <div class="action-title">{title}</div>
+            <div class="action-desc">{desc}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button(f"{icon} {title}", use_container_width=True, key=f"qa_{title}"):
+            st.switch_page(page)

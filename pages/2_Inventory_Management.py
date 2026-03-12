@@ -1,143 +1,206 @@
 import streamlit as st
 import pandas as pd
-from nexus_commerce.inventory import logic
+from nexus_commerce.inventory import logic as inv_logic
+from nexus_commerce.common._utils import inject_custom_css, render_sidebar, page_header, kpi_card, status_pill, render_notification
 
-# --- Page Configuration and Authentication ---
-# This sets the title that appears in the browser tab and configures the layout.
-st.set_page_config(page_title="Inventory Management", layout="wide", page_icon="📦")
-
-# This is a critical security measure. It checks if the user is logged in
-# by looking at the session state. If not, it stops the page from loading.
+# ── Page Config ──
+st.set_page_config(page_title="Inventory | Nexus Commerce", layout="wide", page_icon="📦")
 if not st.session_state.get("authenticated"):
-    st.error("🔒 You must be logged in to view this page. Please go to the main page to log in.")
-    st.stop()
+    st.error("🔒 You must be logged in."); st.stop()
 
-# --- Sidebar ---
-# This creates a consistent sidebar for a professional look and feel.
-st.sidebar.title(f"Welcome, {st.session_state.user_email}")
-st.sidebar.divider()
-if st.sidebar.button("Logout", key="inventory_logout", use_container_width=True):
-    # When logout is clicked, it clears the session state and redirects to the login page.
-    st.session_state.authenticated = False
-    st.session_state.user_email = ""
-    st.switch_page("app.py")
+inject_custom_css()
+render_sidebar()
 
-st.title("📦 Inventory Management")
+render_notification()
 
-# --- UI organized into tabs for different actions ---
-tab1, tab2, tab3, tab4 = st.tabs(["**View All Products**", "**Add New Product**", "**Update Product**", "**Adjust Stock**"])
+page_header("Inventory Management", "Full CRUD operations — Add, View, Update, Delete & Adjust Stock", "📦")
 
-# --- TAB 1: VIEW ALL PRODUCTS ---
-with tab1:
-    st.header("Current Inventory")
-    
-    with st.spinner("Fetching product data..."):
-        products = logic.get_all_products()
-    
-    if isinstance(products, list) and products:
-        df = pd.DataFrame(products)
-        # Prepare the DataFrame for a clean display
-        df_display = df[['sku', 'name', 'quantity_on_hand', 'cost_price', 'selling_price']]
-        df_display.rename(columns={
-            'sku': 'SKU', 'name': 'Name', 'quantity_on_hand': 'Quantity',
-            'cost_price': 'Cost (Rs)', 'selling_price': 'Price (Rs)'
-        }, inplace=True)
+# ── Load Products ──
+products = inv_logic.get_all_products()
+product_list = products if isinstance(products, list) else []
 
-        # --- Interactive Filter ---
-        st.subheader("Filter Products")
-        search_query = st.text_input("Search by Name or SKU", placeholder="Type to filter the list below...")
-        if search_query:
-            # Filter the DataFrame based on user input
-            df_display = df_display[df_display['Name'].str.contains(search_query, case=False) | 
-                                    df_display['SKU'].str.contains(search_query, case=False)]
-        
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-    elif not products:
-        st.info("No products found in the inventory. Add one in the next tab!", icon="➕")
+# ── KPI Row ──
+total = len(product_list)
+in_stock = sum(1 for p in product_list if p.get('quantity_on_hand', 0) >= 10)
+low_stock = sum(1 for p in product_list if 0 < p.get('quantity_on_hand', 0) < 10)
+out_of_stock = sum(1 for p in product_list if p.get('quantity_on_hand', 0) == 0)
+
+c1, c2, c3, c4 = st.columns(4)
+with c1: st.markdown(kpi_card("Total Products", str(total), "📦", "blue"), unsafe_allow_html=True)
+with c2: st.markdown(kpi_card("In Stock", str(in_stock), "✅", "green"), unsafe_allow_html=True)
+with c3: st.markdown(kpi_card("Low Stock", str(low_stock), "⚠️", "amber"), unsafe_allow_html=True)
+with c4: st.markdown(kpi_card("Out of Stock", str(out_of_stock), "🚨", "red"), unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ── Tabs for CRUD Operations ──
+tab_view, tab_add, tab_update, tab_adjust, tab_delete = st.tabs([
+    "📋 **View Products**",
+    "➕ **Add Product**",
+    "✏️ **Update Product**",
+    "📊 **Adjust Stock**",
+    "🗑️ **Delete Product**"
+])
+
+# ── VIEW PRODUCTS ──
+with tab_view:
+    if not product_list:
+        st.markdown("""
+        <div class="empty-state">
+            <div class="empty-icon">📦</div>
+            <div class="empty-title">No Products Yet</div>
+            <div class="empty-desc">Add your first product using the "Add Product" tab.</div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        # If the logic function returns an error string, display it.
-        st.error(products, icon="🚨")
+        search = st.text_input("🔍 Search products by name or SKU…", key="prod_search", placeholder="e.g. Laptop, SKU001")
+        filtered = [p for p in product_list if search.lower() in p['name'].lower() or search.lower() in p['sku'].lower()] if search else product_list
 
-# --- TAB 2: ADD NEW PRODUCT ---
-with tab2:
-    st.header("Add a New Product")
-    with st.form("add_product_form", clear_on_submit=True, border=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            name = st.text_input("Product Name*")
-            sku = st.text_input("Product SKU (Unique Code)*")
-        with col2:
-            cost_price = st.number_input("Cost Price (Rs)*", min_value=0.0, format="%.2f")
-            selling_price = st.number_input("Selling Price (Rs)*", min_value=0.0, format="%.2f")
-        quantity = st.number_input("Initial Quantity", min_value=0, step=1, help="The starting stock for this product.")
-        
-        submitted = st.form_submit_button("Add Product", use_container_width=True, type="primary")
+        st.caption(f"Showing {len(filtered)} of {total} products")
+
+        # Inventory summary
+        summary = inv_logic.get_inventory_summary()
+        if not summary.get("error"):
+            sc1, sc2, sc3 = st.columns(3)
+            with sc1: st.markdown(kpi_card("Stock Value (Cost)", f"₹{summary['total_cost_value']:,.0f}", "🏷️", "blue"), unsafe_allow_html=True)
+            with sc2: st.markdown(kpi_card("Stock Value (Retail)", f"₹{summary['total_sell_value']:,.0f}", "💳", "green"), unsafe_allow_html=True)
+            with sc3: st.markdown(kpi_card("Potential Profit", f"₹{summary['potential_profit']:,.0f}", "🎯", "amber"), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Build display DataFrame
+        df = pd.DataFrame(filtered)
+        if not df.empty:
+            # Defensive check: Ensure all columns exist
+            required_cols = ['sku', 'name', 'cost_price', 'selling_price', 'quantity_on_hand']
+            for col in required_cols:
+                if col not in df.columns:
+                    df[col] = 0 if 'price' in col or 'quantity' in col else "N/A"
+            
+            display_df = df[required_cols].copy()
+            display_df.columns = ['SKU', 'Product Name', 'Cost Price (₹)', 'Selling Price (₹)', 'Stock']
+            display_df['Margin (₹)'] = display_df['Selling Price (₹)'] - display_df['Cost Price (₹)']
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            # CSV Export
+            csv = display_df.to_csv(index=False)
+            st.download_button("📥 Export to CSV", csv, "nexus_inventory.csv", "text/csv", use_container_width=True)
+
+# ── ADD PRODUCT ──
+with tab_add:
+    st.markdown('<div class="section-header">Add New Product</div>', unsafe_allow_html=True)
+    with st.form("add_product_form"):
+        st.text_input("Product Name", key="ap_name", placeholder="e.g. Premium Wireless Headphones")
+        st.text_input("SKU (Unique Code)", key="ap_sku", placeholder="e.g. SKU001")
+        ac1, ac2 = st.columns(2)
+        with ac1: st.number_input("Cost Price (₹)", key="ap_cost", min_value=0.0, format="%.2f", step=1.0)
+        with ac2: st.number_input("Selling Price (₹)", key="ap_sell", min_value=0.0, format="%.2f", step=1.0)
+        st.number_input("Initial Stock Quantity", key="ap_qty", min_value=0, step=1)
+        submitted = st.form_submit_button("➕ Add Product", use_container_width=True, type="primary")
+
         if submitted:
-            if not all([name, sku]):
-                st.error("Name and SKU are required fields.", icon="🚨")
+            name = st.session_state.ap_name
+            sku = st.session_state.ap_sku
+            cost = st.session_state.ap_cost
+            sell = st.session_state.ap_sell
+            qty = st.session_state.ap_qty
+
+            if not name or not sku:
+                st.error("Product name and SKU are required.", icon="🚨")
+            elif sell < cost:
+                st.warning("Selling price is less than cost price. This product will operate at a loss.", icon="⚠️")
             else:
-                # Includes the safeguard to warn against unprofitable pricing.
-                if selling_price <= cost_price:
-                    st.warning(f"Warning: The selling price (Rs. {selling_price:.2f}) is not higher than the cost price (Rs. {cost_price:.2f}).")
-                with st.spinner("Adding product..."):
-                    result = logic.add_product(name, sku, cost_price, selling_price, quantity)
-                if "Success" in result: 
-                    st.success(result, icon="✅")
-                else: 
+                result = inv_logic.add_product(name, sku, cost, sell, qty)
+                if result.startswith("Success"):
+                    st.session_state.toast_msg = result
+                    st.rerun()
+                else:
                     st.error(result, icon="🚨")
 
-# --- TAB 3: UPDATE PRODUCT DETAILS ---
-with tab3:
-    st.header("Update Product Details")
-    sku_to_update = st.text_input("Enter SKU to find and update", key="update_sku", placeholder="e.g., M32")
-    if sku_to_update:
-        product = logic.find_product_by_sku(sku_to_update)
-        if isinstance(product, dict):
-            # The update form is only shown after a valid product is found.
-            with st.form("update_product_form", border=True):
-                st.info(f"You are updating **{product['name']}**.", icon="✏️")
-                new_name = st.text_input("New Name", value=product['name'])
-                new_selling_price = st.number_input("New Selling Price (Rs)", value=float(product['selling_price']))
-                new_cost_price = st.number_input("New Cost Price (Rs)", value=float(product['cost_price']))
-                
-                update_submitted = st.form_submit_button("Update Product Details", use_container_width=True, type="primary")
-                if update_submitted:
-                    updates = {}
-                    if new_name != product['name']: updates['name'] = new_name
-                    if new_selling_price != product['selling_price']: updates['selling_price'] = new_selling_price
-                    if new_cost_price != product['cost_price']: updates['cost_price'] = new_cost_price
-                    if not updates: 
-                        st.warning("No changes were made.", icon="⚠️")
+# ── UPDATE PRODUCT ──
+with tab_update:
+    st.markdown('<div class="section-header">Update Product Details</div>', unsafe_allow_html=True)
+    with st.form("update_product_form"):
+        sku_list = [p['sku'] for p in product_list]
+        if sku_list:
+            selected_sku = st.selectbox("Select Product (SKU)", sku_list, key="up_sku")
+            selected = next((p for p in product_list if p['sku'] == selected_sku), None)
+
+            if selected:
+                st.info(f"Currently editing: **{selected['name']}**", icon="ℹ️")
+                new_name = st.text_input("New Name", value=selected['name'], key="up_name")
+                uc1, uc2 = st.columns(2)
+                with uc1: new_cost = st.number_input("New Cost Price (₹)", value=float(selected['cost_price']), min_value=0.0, format="%.2f", key="up_cost")
+                with uc2: new_sell = st.number_input("New Selling Price (₹)", value=float(selected['selling_price']), min_value=0.0, format="%.2f", key="up_sell")
+                submitted = st.form_submit_button("✏️ Update Product", use_container_width=True, type="primary")
+
+                if submitted:
+                    updates = {"name": new_name.strip(), "cost_price": new_cost, "selling_price": new_sell}
+                    result = inv_logic.update_product_by_sku(selected_sku, updates)
+                    if result.startswith("Success"):
+                        st.session_state.toast_msg = result
+                        st.rerun()
                     else:
-                        with st.spinner("Updating..."):
-                            result = logic.update_product_by_sku(sku_to_update, updates)
-                        if "Success" in result: 
-                            st.success(result, icon="✅")
-                        else: 
-                            st.error(result, icon="🚨")
-        elif product is None: 
-            st.warning(f"No product found with SKU '{sku_to_update.upper()}'.", icon="⚠️")
-        else: 
-            st.error(product, icon="🚨")
+                        st.error(result, icon="🚨")
+        else:
+            st.info("No products available to update.", icon="📦")
+            st.form_submit_button("Update", disabled=True)
 
-# --- TAB 4: ADJUST STOCK QUANTITY ---
-with tab4:
-    st.header("Adjust Stock Quantity")
-    st.info("Use this for manual corrections like damaged items or physical stock counts. This creates an audit trail.", icon="ℹ️")
-    with st.form("adjust_stock_form", clear_on_submit=True, border=True):
-        sku_to_adjust = st.text_input("Product SKU*", placeholder="e.g., M32")
-        change_quantity = st.number_input("Change in Quantity*", step=1, value=0, help="e.g., -1 for removal, 5 for addition")
-        reason = st.text_input("Reason for adjustment (Required)*", placeholder="e.g., Damaged item")
-        
-        adjust_submitted = st.form_submit_button("Adjust Stock", use_container_width=True, type="primary")
-        if adjust_submitted:
-            if not all([sku_to_adjust, reason, change_quantity != 0]):
-                st.error("SKU, a non-zero quantity, and a Reason are required.", icon="🚨")
-            else:
-                with st.spinner("Adjusting stock and creating audit record..."):
-                    result = logic.adjust_stock_quantity(sku_to_adjust, change_quantity, reason)
-                if "Success" in result: 
-                    st.success(result, icon="✅")
-                else: 
-                    st.error(result, icon="🚨")
+# ── ADJUST STOCK ──
+with tab_adjust:
+    st.markdown('<div class="section-header">Stock Adjustment</div>', unsafe_allow_html=True)
+    with st.form("adjust_stock_form"):
+        sku_list = [p['sku'] for p in product_list]
+        if sku_list:
+            adj_sku = st.selectbox("Select Product (SKU)", sku_list, key="adj_sku")
+            adj_product = next((p for p in product_list if p['sku'] == adj_sku), None)
+            if adj_product:
+                st.info(f"**{adj_product['name']}** — Current stock: **{adj_product['quantity_on_hand']}** units", icon="📊")
+            change = st.number_input("Quantity Change (+ to add, - to remove)", step=1, key="adj_qty")
+            reason = st.text_input("Reason for Adjustment", key="adj_reason", placeholder="e.g. New shipment arrived, Damaged goods")
+            submitted = st.form_submit_button("📊 Apply Adjustment", use_container_width=True, type="primary")
 
+            if submitted:
+                if change == 0:
+                    st.warning("Change quantity cannot be zero.", icon="⚠️")
+                elif not reason:
+                    st.error("Please provide a reason for the adjustment.", icon="🚨")
+                else:
+                    result = inv_logic.adjust_stock_quantity(adj_sku, change, reason)
+                    if result.startswith("Success"):
+                        st.session_state.toast_msg = result
+                        st.rerun()
+                    else:
+                        st.error(result, icon="🚨")
+        else:
+            st.info("No products available for adjustment.", icon="📦")
+            st.form_submit_button("Adjust", disabled=True)
+
+# ── DELETE PRODUCT ──
+with tab_delete:
+    st.markdown('<div class="section-header">Delete Product</div>', unsafe_allow_html=True)
+    st.warning("⚠️ **Caution**: Deleting a product is permanent and cannot be undone. Products with existing sales records cannot be deleted.", icon="⚠️")
+
+    with st.form("delete_product_form"):
+        sku_list = [p['sku'] for p in product_list]
+        if sku_list:
+            del_sku = st.selectbox("Select Product to Delete", sku_list, key="del_sku")
+            del_product = next((p for p in product_list if p['sku'] == del_sku), None)
+            if del_product:
+                st.error(f"You are about to delete: **{del_product['name']}** (SKU: {del_sku}) — Stock: {del_product['quantity_on_hand']} units", icon="🗑️")
+            confirm = st.text_input("Type the SKU to confirm deletion", key="del_confirm", placeholder=f"Type '{del_sku}' to confirm")
+            submitted = st.form_submit_button("🗑️ Delete Product Permanently", use_container_width=True, type="primary")
+
+            if submitted:
+                if confirm.strip().upper() != del_sku:
+                    st.error(f"SKU confirmation does not match. Expected: {del_sku}", icon="🚨")
+                else:
+                    result = inv_logic.delete_product_by_sku(del_sku)
+                    if result.startswith("Success"):
+                        st.session_state.toast_msg = result
+                        st.rerun()
+                    else:
+                        st.error(result, icon="🚨")
+        else:
+            st.info("No products available to delete.", icon="📦")
+            st.form_submit_button("Delete", disabled=True)
