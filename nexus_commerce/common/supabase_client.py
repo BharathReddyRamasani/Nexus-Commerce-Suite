@@ -3,6 +3,7 @@ Nexus Commerce Suite — Supabase Client
 ========================================
 Singleton pattern for the Supabase client with logging and connection validation.
 """
+import streamlit as st
 import os
 import logging
 from dotenv import load_dotenv
@@ -17,30 +18,44 @@ _supabase_client: Client = None
 def get_supabase_client() -> Client:
     """
     Creates and returns the Supabase client instance.
-    Uses singleton pattern — only one client per process.
+    Supports Streamlit Secrets (Cloud) and Environment Variables (Local).
     """
     global _supabase_client
 
     if _supabase_client is None:
-        load_dotenv()
-        url: str = os.environ.get("SUPABASE_URL", "").strip()
-        key: str = os.environ.get("SUPABASE_KEY", "").strip()
+        # 1. Try Streamlit Secrets (Best for Cloud)
+        url = ""
+        key = ""
+        
+        try:
+            if hasattr(st, "secrets"):
+                url = st.secrets.get("SUPABASE_URL", "").strip()
+                key = st.secrets.get("SUPABASE_KEY", "").strip()
+                if url: logger.info("Using Streamlit Secrets for database connection.")
+        except Exception:
+            pass
+
+        # 2. Try Environment Variables / .env (Best for Local)
+        if not url or not key:
+            load_dotenv()
+            url = os.environ.get("SUPABASE_URL", "").strip()
+            key = os.environ.get("SUPABASE_KEY", "").strip()
+            if url: logger.info("Using Environment Variables for database connection.")
 
         if not url or not key or url.startswith("your_"):
             raise ValueError(
-                "SUPABASE_URL and SUPABASE_KEY must be set in your .env file. "
-                "Get these from: Supabase Dashboard → Project Settings → API"
+                "SUPABASE_URL or SUPABASE_KEY is missing. "
+                "Local: Set them in .env | Cloud: Add them to Streamlit Dashboard -> Secrets."
             )
 
         try:
-            logger.info("Initializing Supabase client for %s", url[:40] + "…")
+            logger.info("Initializing Supabase client for %s", url[:30] + "...")
             _supabase_client = create_client(url, key)
             logger.info("Supabase client initialized successfully.")
         except Exception as e:
             logger.error("Failed to create Supabase client: %s", e)
             raise ConnectionError(
-                f"Could not connect to Supabase. "
-                f"Verify your credentials in .env are correct. Details: {e}"
+                f"Connection Failed. URL: {url[:25]}... Detail: {e}"
             )
 
     return _supabase_client

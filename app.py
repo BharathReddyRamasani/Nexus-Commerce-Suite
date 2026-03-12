@@ -18,8 +18,13 @@ inject_custom_css()
 try:
     check_connection()
 except (ValueError, ConnectionError) as e:
-    st.error(f"**FATAL ERROR:** Could not connect to the database.", icon="🔥")
-    st.error(f"Details: {e}")
+    st.error(f"**🔴 Database Connection Failed**", icon="🚫")
+    st.info(f"""
+    **Cloud Users:** Ensure you have added `SUPABASE_URL` and `SUPABASE_KEY` to your 
+    **Streamlit Dashboard -> App Settings -> Secrets**.
+    
+    **Error Details:** `{e}`
+    """, icon="🔧")
     st.stop()
 
 # ── Session State ──
