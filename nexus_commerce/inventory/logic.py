@@ -63,7 +63,8 @@ def get_all_products() -> list | str:
     """Retrieve all products ordered by name. Returns list or error string."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("products").select("*").eq("is_active", True).order("name").execute()
+        # Use OR to include True and NULL (for rows created before schema migration)
+        response = supabase.table("products").select("*").or_("is_active.eq.true,is_active.is.null").order("name").execute()
         return response.data
     except Exception as e:
         logger.error("Failed to fetch products: %s", e)
@@ -171,7 +172,7 @@ def get_inventory_summary() -> dict:
     """Get inventory summary: total value, potential profit, counts by status."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("products").select("cost_price, selling_price, quantity_on_hand").eq("is_active", True).execute()
+        response = supabase.table("products").select("cost_price, selling_price, quantity_on_hand").or_("is_active.eq.true,is_active.is.null").execute()
         if not response.data:
             return {"total_cost_value": 0, "total_sell_value": 0, "potential_profit": 0, "total_units": 0}
 

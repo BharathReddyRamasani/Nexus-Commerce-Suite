@@ -98,6 +98,24 @@ def render_sidebar():
             st.session_state.user_email = ""
             st.switch_page("app.py")
 
+        # ── Diagnostics ──
+        with st.sidebar.expander("🛠️ System Diagnostics", expanded=False):
+            from ..common.supabase_client import get_supabase_client
+            try:
+                sb = get_supabase_client()
+                url = sb.supabase_url if hasattr(sb, 'supabase_url') else "Unknown"
+                st.write(f"**Connected Project:** `{url[:25]}...`")
+                
+                # Check counts to verify visibility
+                st.write("**Visibility Check:**")
+                st.write(f"- Products: {len(sb.table('products').select('id', count='exact').execute().data)}")
+                st.write(f"- Customers: {len(sb.table('customers').select('id', count='exact').execute().data)}")
+                st.write(f"- Sales: {len(sb.table('sales').select('id', count='exact').execute().data)}")
+                
+                st.info("If counts are 0 but tables have data, check **Supabase RLS Policies**.")
+            except Exception as e:
+                st.error(f"Diagnostics Failed: {e}")
+
 
 # ────────────────────────────────────────────
 #  Premium Dark-Mode CSS Theme (World-Class)
