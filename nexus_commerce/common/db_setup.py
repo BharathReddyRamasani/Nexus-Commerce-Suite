@@ -15,7 +15,11 @@ def check_tables_exist() -> dict:
     Returns a dict with table names as keys and boolean existence as values.
     """
     supabase = get_supabase_client()
-    required_tables = ['products', 'customers', 'sales', 'sale_items', 'payments', 'stock_adjustments']
+    required_tables = [
+        'products', 'customers', 'sales', 'sale_items', 
+        'payments', 'stock_adjustments', 'expenses', 
+        'returns', 'categories', 'brands'
+    ]
     results = {}
 
     for table in required_tables:
@@ -38,18 +42,37 @@ def get_setup_sql() -> str:
 -- ═══════════════════════════════════════════════════════════════
 
 -- 1. PRODUCTS
-CREATE TABLE IF NOT EXISTS products (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    name TEXT NOT NULL,
-    sku TEXT NOT NULL UNIQUE,
-    cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    selling_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    quantity_on_hand INTEGER NOT NULL DEFAULT 0,
-    is_active BOOLEAN DEFAULT TRUE,
-    last_sale_date TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
+        -- 1. Categorization
+        CREATE TABLE IF NOT EXISTS categories (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS brands (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            name TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+
+        -- 2. Products
+        CREATE TABLE IF NOT EXISTS products (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            sku TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            selling_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            tax_rate NUMERIC(5, 2) DEFAULT 0,
+            quantity_on_hand INTEGER NOT NULL DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE,
+            category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+            brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
+            last_sale_date TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        );
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
 
 -- 2. CUSTOMERS
@@ -68,6 +91,7 @@ CREATE TABLE IF NOT EXISTS sales (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
     total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    total_tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
     total_profit NUMERIC(12, 2) NOT NULL DEFAULT 0,
     sale_date TIMESTAMPTZ DEFAULT now(),
     created_at TIMESTAMPTZ DEFAULT now()
@@ -81,6 +105,7 @@ CREATE TABLE IF NOT EXISTS sale_items (
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
     quantity INTEGER NOT NULL DEFAULT 1,
     price_per_unit NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items(sale_id);
@@ -96,14 +121,34 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE INDEX IF NOT EXISTS idx_payments_sale ON payments(sale_id);
 
 -- 6. STOCK ADJUSTMENTS
-CREATE TABLE IF NOT EXISTS stock_adjustments (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    warehouse_id UUID, -- Explicitly nullable to allow adjustments without a warehouse
-    change_quantity INTEGER NOT NULL,
-    reason TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
+        CREATE TABLE IF NOT EXISTS stock_adjustments (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+            warehouse_id UUID, -- Optional for now
+            change_amount INTEGER NOT NULL,
+            reason TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS expenses (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            category TEXT NOT NULL,
+            amount NUMERIC(12, 2) NOT NULL,
+            expense_date DATE DEFAULT CURRENT_DATE,
+            description TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+
+        -- 8. Returns
+        CREATE TABLE IF NOT EXISTS returns (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            sale_id UUID REFERENCES sales(id) ON DELETE CASCADE,
+            product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+            quantity INTEGER NOT NULL,
+            refund_amount NUMERIC(12, 2) NOT NULL,
+            reason TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
 CREATE INDEX IF NOT EXISTS idx_adjustments_product ON stock_adjustments(product_id);
 
 -- AUTO-UPDATE TIMESTAMPS TRIGGER
@@ -130,6 +175,10 @@ ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_adjustments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE returns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brands ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all on products" ON products;
 CREATE POLICY "Allow all on products" ON products FOR ALL USING (true) WITH CHECK (true);
@@ -148,6 +197,18 @@ CREATE POLICY "Allow all on payments" ON payments FOR ALL USING (true) WITH CHEC
 
 DROP POLICY IF EXISTS "Allow all on stock_adjustments" ON stock_adjustments;
 CREATE POLICY "Allow all on stock_adjustments" ON stock_adjustments FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all on expenses" ON expenses;
+CREATE POLICY "Allow all on expenses" ON expenses FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all on returns" ON returns;
+CREATE POLICY "Allow all on returns" ON returns FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all on categories" ON categories;
+CREATE POLICY "Allow all on categories" ON categories FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all on brands" ON brands;
+CREATE POLICY "Allow all on brands" ON brands FOR ALL USING (true) WITH CHECK (true);
 
 -- ═══════════════════════════════════════════════════════════════
 -- ✅ DONE! All tables created successfully.

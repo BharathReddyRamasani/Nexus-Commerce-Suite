@@ -94,15 +94,24 @@ with col_right:
         </div>
         """, unsafe_allow_html=True)
     else:
-        total = 0
+        subtotal = 0
+        total_tax = 0
         for i, item in enumerate(st.session_state.cart):
-            line_total = item['price'] * item['quantity']
-            total += line_total
+            # We need tax rate from product list
+            prod = next(p for p in product_list if p['sku'] == item['sku'])
+            tax_rate = prod.get('tax_rate', 0)
+            
+            line_subtotal = item['price'] * item['quantity']
+            line_tax = line_subtotal * (tax_rate / 100.0)
+            
+            subtotal += line_subtotal
+            total_tax += line_tax
 
             ic1, ic2, ic3 = st.columns([5, 2, 1])
             with ic1:
                 st.markdown(f"**{item['name']}** `{item['sku']}`")
-                st.caption(f"₹{item['price']:,.2f} × {item['quantity']} = ₹{line_total:,.2f}")
+                tax_info = f" (+{tax_rate}% GST)" if tax_rate > 0 else ""
+                st.caption(f"₹{item['price']:,.2f} × {item['quantity']} = ₹{line_subtotal:,.2f}{tax_info}")
             with ic3:
                 if st.button("✕", key=f"rm_{i}", help="Remove from cart"):
                     st.session_state.cart.pop(i)
@@ -110,9 +119,11 @@ with col_right:
             st.divider()
 
         # Total KPIs
-        t1, t2 = st.columns(2)
-        with t1: st.markdown(kpi_card("Items", str(len(st.session_state.cart)), "📦", "blue"), unsafe_allow_html=True)
-        with t2: st.markdown(kpi_card("Total", f"₹{total:,.2f}", "💰", "green"), unsafe_allow_html=True)
+        grand_total = subtotal + total_tax
+        t1, t2, t3 = st.columns(3)
+        with t1: st.markdown(kpi_card("Subtotal", f"₹{subtotal:,.2f}", "📦", "blue"), unsafe_allow_html=True)
+        with t2: st.markdown(kpi_card("GST/Tax", f"₹{total_tax:,.2f}", "📜", "amber"), unsafe_allow_html=True)
+        with t3: st.markdown(kpi_card("Total", f"₹{grand_total:,.2f}", "💰", "green"), unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -121,7 +132,7 @@ with col_right:
 
         with st.form("payment_form"):
             method = st.selectbox("Payment Method", ["Cash", "Card", "UPI", "Bank Transfer"])
-            amount = st.number_input(f"Amount (₹)", value=float(total), min_value=0.0, format="%.2f")
+            amount = st.number_input(f"Amount (₹)", value=float(grand_total), min_value=0.0, format="%.2f")
 
             p1, p2 = st.columns(2)
             with p1: complete = st.form_submit_button("✅ Complete Sale", use_container_width=True, type="primary")

@@ -35,7 +35,7 @@ def get_profit_report(period: str) -> dict:
 
     try:
         logger.info("Generating profit report for period: %s", period)
-        response = supabase.table("sales").select("total_amount, total_profit") \
+        response = supabase.table("sales").select("total_amount, total_profit, total_tax") \
             .gte("sale_date", start_date.isoformat()) \
             .lte("sale_date", end_date.isoformat()).execute()
 
@@ -44,10 +44,12 @@ def get_profit_report(period: str) -> dict:
 
         total_revenue = sum(sale['total_amount'] for sale in response.data)
         total_profit = sum(sale['total_profit'] for sale in response.data)
+        total_tax = sum(sale.get('total_tax', 0) for sale in response.data)
 
         return {
             "total_revenue": total_revenue,
             "total_profit": total_profit,
+            "total_tax": total_tax,
             "start_date": start_date,
             "end_date": end_date
         }

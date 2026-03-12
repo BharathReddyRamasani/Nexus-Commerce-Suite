@@ -9,16 +9,40 @@ from ..common.supabase_client import get_supabase_client
 logger = logging.getLogger("nexus_commerce.inventory")
 
 
-def add_product(name: str, sku: str, cost_price: float, selling_price: float, quantity_on_hand: int) -> str:
+def get_categories() -> list:
+    """Retrieve all product categories."""
+    supabase = get_supabase_client()
+    try:
+        response = supabase.table("categories").select("*").order("name").execute()
+        return response.data
+    except Exception as e:
+        logger.error("Failed to fetch categories: %s", e)
+        return []
+
+def get_brands() -> list:
+    """Retrieve all brands."""
+    supabase = get_supabase_client()
+    try:
+        response = supabase.table("brands").select("*").order("name").execute()
+        return response.data
+    except Exception as e:
+        logger.error("Failed to fetch brands: %s", e)
+        return []
+
+def add_product(sku: str, name: str, cost: float, sell: float, qty: int = 0, desc: str = "", category_id: str = None, brand_id: str = None, tax_rate: float = 0.0) -> str:
     """Add a new product to the inventory. Returns a success/error message string."""
     supabase = get_supabase_client()
     try:
         product_data = {
             "name": name.strip(),
             "sku": sku.strip().upper(),
-            "cost_price": cost_price,
-            "selling_price": selling_price,
-            "quantity_on_hand": quantity_on_hand,
+            "cost_price": cost,
+            "selling_price": sell,
+            "tax_rate": tax_rate,
+            "quantity_on_hand": qty,
+            "description": desc,
+            "category_id": category_id,
+            "brand_id": brand_id
         }
         logger.info("Adding product: %s (SKU: %s)", name, sku.upper())
         response = supabase.table("products").insert(product_data).execute()

@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from nexus_commerce.reports import logic as report_logic
 from nexus_commerce.inventory import logic as inv_logic
+from nexus_commerce.expenses import logic as expense_logic
 from nexus_commerce.common._utils import inject_custom_css, render_sidebar, page_header, kpi_card
 
 # ── Page Config ──
@@ -29,25 +30,30 @@ with tab_rev:
 
     with st.spinner("Loading report…"):
         data = report_logic.get_profit_report(period)
+        days = 1 if period == 'daily' else 7 if period == 'weekly' else 30
+        expense_data = expense_logic.get_expense_summary(days)
 
     if data.get("error"):
         st.error(data['error'], icon="🚨")
     else:
         revenue = data.get('total_revenue', 0)
-        profit = data.get('total_profit', 0)
-        margin = (profit / revenue * 100) if revenue > 0 else 0
+        gross_profit = data.get('total_profit', 0)
+        expenses = expense_data.get('total', 0)
+        net_profit = gross_profit - expenses
+        margin = (net_profit / revenue * 100) if revenue > 0 else 0
 
-        r1, r2, r3 = st.columns(3)
+        r1, r2, r3, r4 = st.columns(4)
         with r1: st.markdown(kpi_card("Total Revenue", f"₹{revenue:,.2f}", "💰", "green"), unsafe_allow_html=True)
-        with r2: st.markdown(kpi_card("Total Profit", f"₹{profit:,.2f}", "📈", "blue"), unsafe_allow_html=True)
-        with r3: st.markdown(kpi_card("Profit Margin", f"{margin:.1f}%", "🎯", "purple"), unsafe_allow_html=True)
+        with r2: st.markdown(kpi_card("Gross Profit", f"₹{gross_profit:,.2f}", "📈", "blue"), unsafe_allow_html=True)
+        with r3: st.markdown(kpi_card("Overhead Expenses", f"₹{expenses:,.2f}", "💸", "red"), unsafe_allow_html=True)
+        with r4: st.markdown(kpi_card("Net Profit", f"₹{net_profit:,.2f}", "🎯", "purple"), unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         # Donut chart
         fig = go.Figure(data=[go.Pie(
-            labels=['Profit', 'Cost'],
-            values=[profit, max(0, revenue - profit)],
+            labels=['Gross Profit', 'Cost & Overhead'],
+            values=[gross_profit, max(0, revenue - gross_profit)],
             hole=0.65,
             marker=dict(colors=['#10b981', 'rgba(239,68,68,0.6)'],
                         line=dict(color='rgba(0,0,0,0.3)', width=2)),

@@ -85,6 +85,7 @@ def render_sidebar():
             ("👥", "Customers", "pages/4_Customer_Management.py"),
             ("📈", "Reports", "pages/5_Reports.py"),
             ("🔬", "Analytics (DS)", "pages/6_Analytics.py"),
+            ("💸", "Expenses", "pages/7_Expense_Management.py"),
         ]
         for icon, label, page in nav_items:
             if st.button(f"{icon}  {label}", use_container_width=True, key=f"nav_{label}"):

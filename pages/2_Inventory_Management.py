@@ -15,8 +15,10 @@ render_notification()
 
 page_header("Inventory Management", "Full CRUD operations — Add, View, Update, Delete & Adjust Stock", "📦")
 
-# ── Load Products ──
+# ── Load Products & Meta ──
 products = inv_logic.get_all_products()
+categories = inv_logic.get_categories()
+brands = inv_logic.get_brands()
 product_list = products if isinstance(products, list) else []
 
 # ── KPI Row ──
@@ -92,10 +94,23 @@ with tab_add:
     with st.form("add_product_form"):
         st.text_input("Product Name", key="ap_name", placeholder="e.g. Premium Wireless Headphones")
         st.text_input("SKU (Unique Code)", key="ap_sku", placeholder="e.g. SKU001")
+        
+        ac_c1, ac_c2 = st.columns(2)
+        with ac_c1:
+            cat_options = {c['name']: c['id'] for c in categories}
+            cat_name = st.selectbox("Category", ["None"] + list(cat_options.keys()), key="ap_cat")
+            cat_id = cat_options.get(cat_name)
+        with ac_c2:
+            brand_options = {b['name']: b['id'] for b in brands}
+            brand_name = st.selectbox("Brand", ["None"] + list(brand_options.keys()), key="ap_brand")
+            brand_id = brand_options.get(brand_name)
+
         ac1, ac2 = st.columns(2)
         with ac1: st.number_input("Cost Price (₹)", key="ap_cost", min_value=0.0, format="%.2f", step=1.0)
         with ac2: st.number_input("Selling Price (₹)", key="ap_sell", min_value=0.0, format="%.2f", step=1.0)
         st.number_input("Initial Stock Quantity", key="ap_qty", min_value=0, step=1)
+        st.number_input("Tax Rate (%)", key="ap_tax", min_value=0.0, max_value=100.0, step=0.1, format="%.2f")
+        st.text_area("Description", key="ap_desc", placeholder="Product technical specs or marketing copy...")
         submitted = st.form_submit_button("➕ Add Product", use_container_width=True, type="primary")
 
         if submitted:
@@ -104,13 +119,15 @@ with tab_add:
             cost = st.session_state.ap_cost
             sell = st.session_state.ap_sell
             qty = st.session_state.ap_qty
+            tax = st.session_state.ap_tax
+            desc = st.session_state.ap_desc
 
             if not name or not sku:
                 st.error("Product name and SKU are required.", icon="🚨")
             elif sell < cost:
                 st.warning("Selling price is less than cost price. This product will operate at a loss.", icon="⚠️")
             else:
-                result = inv_logic.add_product(name, sku, cost, sell, qty)
+                result = inv_logic.add_product(sku, name, cost, sell, qty, desc, cat_id, brand_id, tax)
                 if result.startswith("Success"):
                     st.session_state.toast_msg = result
                     st.rerun()
@@ -129,13 +146,36 @@ with tab_update:
             if selected:
                 st.info(f"Currently editing: **{selected['name']}**", icon="ℹ️")
                 new_name = st.text_input("New Name", value=selected['name'], key="up_name")
+                
+                uc_c1, uc_c2 = st.columns(2)
+                with uc_c1:
+                    cat_opts = {c['name']: c['id'] for c in categories}
+                    current_cat_name = next((name for name, id in cat_opts.items() if id == selected.get('category_id')), "None")
+                    updated_cat_name = st.selectbox("Update Category", ["None"] + list(cat_opts.keys()), index=(["None"] + list(cat_opts.keys())).index(current_cat_name), key="up_cat")
+                    updated_cat_id = cat_opts.get(updated_cat_name)
+                with uc_c2:
+                    brand_opts = {b['name']: b['id'] for b in brands}
+                    current_brand_name = next((name for name, id in brand_opts.items() if id == selected.get('brand_id')), "None")
+                    updated_brand_name = st.selectbox("Update Brand", ["None"] + list(brand_opts.keys()), index=(["None"] + list(brand_opts.keys())).index(current_brand_name), key="up_brand")
+                    updated_brand_id = brand_opts.get(updated_brand_name)
+
                 uc1, uc2 = st.columns(2)
                 with uc1: new_cost = st.number_input("New Cost Price (₹)", value=float(selected['cost_price']), min_value=0.0, format="%.2f", key="up_cost")
                 with uc2: new_sell = st.number_input("New Selling Price (₹)", value=float(selected['selling_price']), min_value=0.0, format="%.2f", key="up_sell")
+                
+                new_tax = st.number_input("Tax Rate (%)", value=float(selected.get('tax_rate', 0)), min_value=0.0, max_value=100.0, key="up_tax")
+
                 submitted = st.form_submit_button("✏️ Update Product", use_container_width=True, type="primary")
 
                 if submitted:
-                    updates = {"name": new_name.strip(), "cost_price": new_cost, "selling_price": new_sell}
+                    updates = {
+                        "name": new_name.strip(), 
+                        "cost_price": new_cost, 
+                        "selling_price": new_sell,
+                        "tax_rate": new_tax,
+                        "category_id": updated_cat_id,
+                        "brand_id": updated_brand_id
+                    }
                     result = inv_logic.update_product_by_sku(selected_sku, updates)
                     if result.startswith("Success"):
                         st.session_state.toast_msg = result
