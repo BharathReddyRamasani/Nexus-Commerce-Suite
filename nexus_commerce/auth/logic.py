@@ -67,5 +67,11 @@ def sign_in(email: str, password: str) -> dict:
 
         if "Invalid login credentials" in error_message:
             return {"success": False, "message": "Invalid email or password. Please try again."}
+        
+        if "Email not confirmed" in error_message:
+            return {
+                "success": False, 
+                "message": "📧 **Email Not Confirmed.** Please check your inbox or disable 'Confirm Email' in Supabase Dashboard -> Authentication -> Settings."
+            }
 
         return {"success": False, "message": f"Login error: {error_message}"}
