@@ -5,4 +5,5 @@ python-dotenv==1.0.1
 plotly==5.22.0
 streamlit-option-menu==0.3.13
 numpy==1.26.4
-websockets==14.0
+# websockets removal to resolve supabase-realtime conflict
+# websockets is handled automatically by the supabase[realtime] package.
