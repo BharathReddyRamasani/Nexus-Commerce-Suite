@@ -39,7 +39,7 @@ def get_all_products() -> list | str:
     """Retrieve all products ordered by name. Returns list or error string."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("products").select("*").order("name").execute()
+        response = supabase.table("products").select("*").eq("is_active", True).order("name").execute()
         return response.data
     except Exception as e:
         logger.error("Failed to fetch products: %s", e)
@@ -129,13 +129,13 @@ def delete_product_by_sku(sku: str) -> str:
 
         product_name = product_res.data['name']
 
-        # Delete (CASCADE will handle stock_adjustments)
-        response = supabase.table("products").delete().eq("sku", sku_upper).execute()
+        # Soft Delete: Update is_active to False instead of deleting
+        response = supabase.table("products").update({"is_active": False}).eq("sku", sku_upper).execute()
         if hasattr(response, 'error') and response.error:
             raise Exception(response.error.message)
 
-        logger.info("Product '%s' (SKU: %s) deleted.", product_name, sku_upper)
-        return f"Success: Product '{product_name}' (SKU: {sku_upper}) has been deleted."
+        logger.info("Product '%s' (SKU: %s) soft-deleted.", product_name, sku_upper)
+        return f"Success: Product '{product_name}' (SKU: {sku_upper}) has been removed from active inventory."
     except Exception as e:
         if 'violates foreign key' in str(e).lower():
             return f"Error: Cannot delete — this product has sales records linked to it."
@@ -147,7 +147,7 @@ def get_inventory_summary() -> dict:
     """Get inventory summary: total value, potential profit, counts by status."""
     supabase = get_supabase_client()
     try:
-        response = supabase.table("products").select("cost_price, selling_price, quantity_on_hand").execute()
+        response = supabase.table("products").select("cost_price, selling_price, quantity_on_hand").eq("is_active", True).execute()
         if not response.data:
             return {"total_cost_value": 0, "total_sell_value": 0, "potential_profit": 0, "total_units": 0}
 

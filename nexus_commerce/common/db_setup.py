@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS products (
     cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
     selling_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
     quantity_on_hand INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
     last_sale_date TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -98,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_sale ON payments(sale_id);
 CREATE TABLE IF NOT EXISTS stock_adjustments (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    warehouse_id UUID, -- Explicitly nullable to allow adjustments without a warehouse
     change_quantity INTEGER NOT NULL,
     reason TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
